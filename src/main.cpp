@@ -5,13 +5,12 @@
 #include "ftm_file.h"
 #include "dirent.h"
 #include "SerialTerminal.h"
+
 extern "C" {
 #include "ls.h"
 }
 
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
-
-FTM_FILE ftm;
 
 void open_ftm_cmd(int argc, const char* argv[]) {
     if (argc < 2) {
@@ -43,6 +42,7 @@ void shell(void *arg) {
     terminal.begin(115200, "Fami32");
     terminal.addCommand("ls", ls_entry);
     terminal.addCommand("reboot", reboot_cmd);
+    terminal.addCommand("exit", reboot_cmd);
     terminal.addCommand("open_ftm", open_ftm_cmd);
     terminal.addCommand("read_ftm", read_ftm_cmd);
     terminal.addCommand("print_frame", print_frame_cmd);
@@ -71,12 +71,6 @@ void setup() {
 }
 
 void loop() {
-    // for (uint8_t x = 0; x < 128; x++) {
-    //     for (uint8_t y = 0; y < 64; y++) {
-    //         display.drawPixel(x, y, rand() & 1);
-    //     }
-    // }
-    display.fillScreen(0);
-    display.display();
-    vTaskDelete(NULL);
+    screenSaver(display);
+    // vTaskDelete(NULL);
 }
