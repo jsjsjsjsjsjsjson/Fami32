@@ -149,7 +149,7 @@ void FTM_FILE::read_sequences_data() {
         printf("SETTING: 0x%X\n", sequences[index_map[i][0]][index_map[i][1]].setting);
     }
     printf("SECCESS.\n");
-    if (getchar() == '1') {
+    if (1) { //getchar() == '1') {
         printf("\nVOLUME:\n");
         for (uint32_t i = 0; i < sequences[0].size(); i++) {
             printf("#%d: %d %d %d -> ", sequences[0][i].index, sequences[0][i].length, sequences[0][i].loop, sequences[0][i].release);

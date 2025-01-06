@@ -3,6 +3,7 @@
 #include <Adafruit_SSD1306.h>
 #include <esp_littlefs.h>
 #include "ftm_file.h"
+#include "tracker.h"
 #include "dirent.h"
 #include "SerialTerminal.h"
 
@@ -71,6 +72,12 @@ void setup() {
 }
 
 void loop() {
-    screenSaver(display);
+    for (uint8_t y = 0; y < 64; y++) {
+        for (uint8_t x = 0; x < 128; x++) {
+            display.drawPixel(x, y, rand() & 1);
+        }
+    }
+    display.display();
+    vTaskDelay(4);
     // vTaskDelete(NULL);
 }
