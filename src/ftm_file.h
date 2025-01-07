@@ -134,6 +134,8 @@ typedef struct __attribute__((packed)) {
 #define NO_VOL 0x10
 #define NO_EFX 0
 
+#define SEQ_FEAT_DISABLE 0xffffffff
+
 typedef struct {
     uint8_t note = NO_NOTE;
 	uint8_t octave = NO_OCT;

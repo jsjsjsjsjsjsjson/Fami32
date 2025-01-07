@@ -68,7 +68,7 @@ void setup() {
         display.printf("LittleFS mounted!\n");
         display.display();
     }
-    xTaskCreate(shell, "SHELL", 10240, NULL, 4, NULL);
+    xTaskCreate(shell, "SHELL", 10240, NULL, 5, NULL);
 }
 
 void loop() {
@@ -78,6 +78,6 @@ void loop() {
         }
     }
     display.display();
-    vTaskDelay(4);
+    // vTaskDelay(1);
     // vTaskDelete(NULL);
 }
