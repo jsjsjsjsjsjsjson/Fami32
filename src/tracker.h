@@ -6,6 +6,8 @@
 
 #include "ftm_file.h"
 
+#include "note2freq.h"
+
 #include "wave_table.h"
 #include "src_config.h"
 
@@ -65,6 +67,7 @@ public:
                 status[i] = SEQU_RELEASE;
             } else {
                 status[i] = SEQU_STOP;
+                var[i] = 0;
             }
         }
     }
@@ -147,6 +150,46 @@ public:
     void note_start() {
         inst_proc.start();
     }
+
+    void note_end() {
+        inst_proc.end();
+    }
+
+    void set_period(float period_ref) {
+        period = period_ref;
+        freq = period2freq(period);
+        pos_count = freq / SAMP_RATE;
+    }
+
+    void set_freq(float freq_ref) {
+        freq = freq_ref;
+        period = freq2period(freq);
+        pos_count = freq / SAMP_RATE;
+    }
+
+    void set_note(uint8_t note) {
+        period = note2period(note, 0);
+        freq = period2freq(period);
+        pos_count = freq / SAMP_RATE;
+        printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
+    }
+
+    void set_vol(uint8_t vol) {
+        chl_vol = vol;
+    }
+
+    uint8_t get_vol() {
+        return chl_vol;
+    }
+
+    int16_t* get_buf() {
+        return tick_buf.data();
+    }
+
+    size_t get_buf_size() {
+        return tick_buf.size();
+    }
+
 };
 
 #endif // TRACKER_H

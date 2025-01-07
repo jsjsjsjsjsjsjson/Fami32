@@ -149,4 +149,8 @@ float period2freq(float period) {
     return FCPU_HZ / (16.0f * (period + 1.0f));
 }
 
+float freq2period(float freq) {
+    return (FCPU_HZ / (16.0f * freq)) - 1.0f;
+}
+
 #endif
