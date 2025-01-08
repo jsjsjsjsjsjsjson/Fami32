@@ -153,4 +153,8 @@ float freq2period(float freq) {
     return (FCPU_HZ / (16.0f * freq)) - 1.0f;
 }
 
+uint8_t item2note(uint8_t note, uint8_t octv) {
+    return (note - 1) + ((octv + 2) * 12);
+}
+
 #endif

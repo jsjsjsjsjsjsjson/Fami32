@@ -1,20 +1,25 @@
 #include "ftm_file.h"
+extern int errno;
 
 int FTM_FILE::open_ftm(const char *filename) {
     ftm_file = fopen(filename, "rb+");
+    if (ftm_file == NULL) {
+        printf("Error opening file: %s\n", strerror(errno));
+        return -1;
+    }
     fread(&header, sizeof(header), 1, ftm_file);
     if (strncmp(header.id, "FamiTracker Module", 18)) {
         printf("HEADER: %.16s\n", header.id);
         printf("This is not a valid FTM file!\n");
         memset(&header, 0, sizeof(header));
         fclose(ftm_file);
-        return -1;
+        return -2;
     };
     if (header.version != 0x0440) {
         printf("Only FTM file version 0x0440 is supported\nVERSION: 0x%X\n", header.version);
         memset(&header, 0, sizeof(header));
         fclose(ftm_file);
-        return -2;
+        return -3;
     }
     printf("\nOpen %.18s\n", header.id);
     printf("VERSION: 0x%X\n", header.version);
@@ -318,6 +323,11 @@ void FTM_FILE::print_frame_data(int index) {
 }
 
 void FTM_FILE::read_ftm_all() {
+    if (ftm_file == NULL) {
+        printf("No files were opened and could not be read.\n");
+        return;
+    }
+
     read_param_block();
     read_info_block();
     read_header_block();

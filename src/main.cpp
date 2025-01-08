@@ -12,6 +12,8 @@ extern "C" {
 #include "ls.h"
 }
 
+TaskHandle_t SOUND_TASK_HD = NULL;
+
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
 
 void open_ftm_cmd(int argc, const char* argv[]) {
@@ -40,9 +42,9 @@ void reboot_cmd(int argc, const char* argv[]) {
 }
 
 FAMI_CHANNEL channel;
+FAMI_PLAYER player;
 
-void sound(void *arg) {
-    channel.init(&ftm);
+void sound_task(void *arg) {
     i2s_chan_handle_t tx_handle;
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     i2s_new_channel(&chan_cfg, &tx_handle, NULL);
@@ -66,16 +68,22 @@ void sound(void *arg) {
     i2s_channel_init_std_mode(tx_handle, &std_cfg);
     i2s_channel_enable(tx_handle);
 
+    vTaskSuspend(NULL);
     size_t writed;
+    player.init(&ftm);
+    channel.init(&ftm);
 
     for (;;) {
-        channel.make_tick_sound();
-        i2s_channel_write(tx_handle, channel.get_buf(), channel.get_buf_size(), &writed, portMAX_DELAY);
+        // channel.update_tick();
+        player.process_tick();
+        i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+        // printf("%u\n", writed);
     }
 }
 
 void start_fami_cmd(int argc, const char* argv[]) {
-    printf("START_SOUND: %d\n", xTaskCreate(sound, "SOUND", 8192, NULL, 5, NULL));
+    vTaskResume(SOUND_TASK_HD);
+    printf("START SOUND\n");
 }
 
 void start_note_cmd(int argc, const char* argv[]) {
@@ -99,12 +107,39 @@ void set_inst_cmd(int argc, const char* argv[]) {
     channel.set_inst(strtol(argv[1], NULL, 0));
 }
 
+void fast_test(int argc, const char* argv[]) {
+    ftm.open_ftm("/flash/5_pancake.ftm");
+    ftm.read_ftm_all();
+    start_fami_cmd(0, NULL);
+}
+
+void osc_cmd(int argc, const char* argv[]) {
+    Serial.read();
+    for (;;) {
+        display.clearDisplay();
+        for (uint8_t x = 0; x < 128; x++) {
+            display.drawPixel(x, (channel.get_buf()[x * 8] / 512) + 31, 1);
+        }
+        display.display();
+        vTaskDelay(4);
+        if (Serial.available()) {
+            printf("\n");
+            Serial.read();
+            break;
+        }
+    }
+}
+
+#include "free_heap.h"
+
 void shell(void *arg) {
     SerialTerminal terminal;
     terminal.begin(115200, "Fami32");
     terminal.addCommand("ls", ls_entry);
+    terminal.addCommand("free", free_command);
     terminal.addCommand("reboot", reboot_cmd);
     terminal.addCommand("exit", reboot_cmd);
+    terminal.addCommand("osc", osc_cmd);
     terminal.addCommand("open_ftm", open_ftm_cmd);
     terminal.addCommand("read_ftm", read_ftm_cmd);
     terminal.addCommand("print_frame", print_frame_cmd);
@@ -112,6 +147,7 @@ void shell(void *arg) {
     terminal.addCommand("set_inst", set_inst_cmd);
     terminal.addCommand("start_note", start_note_cmd);
     terminal.addCommand("end_note", end_note_cmd);
+    terminal.addCommand("fast_test", fast_test);
     for (;;) {
         terminal.update();
         vTaskDelay(1);
@@ -133,16 +169,10 @@ void setup() {
         display.printf("LittleFS mounted!\n");
         display.display();
     }
-    xTaskCreate(shell, "SHELL", 10240, NULL, 3, NULL);
+    xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 5, &SOUND_TASK_HD);
+    xTaskCreate(shell, "SHELL", 4096, NULL, 3, NULL);
 }
 
 void loop() {
-    for (uint8_t y = 0; y < 64; y++) {
-        for (uint8_t x = 0; x < 128; x++) {
-            display.drawPixel(x, y, rand() & 1);
-        }
-    }
-    display.display();
-    // vTaskDelay(1);
-    // vTaskDelete(NULL);
+    vTaskDelete(NULL);
 }
