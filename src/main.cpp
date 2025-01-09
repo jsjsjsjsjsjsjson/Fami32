@@ -113,21 +113,41 @@ void fast_test(int argc, const char* argv[]) {
     start_fami_cmd(0, NULL);
 }
 
-void osc_cmd(int argc, const char* argv[]) {
-    Serial.read();
+void osc_task(void *arg) {
+    display.setTextColor(1);
+    display.setTextSize(1);
     for (;;) {
         display.clearDisplay();
-        for (uint8_t x = 0; x < 128; x++) {
-            display.drawPixel(x, (channel.get_buf()[x * 8] / 512) + 31, 1);
+        for (uint8_t i = 0; i < 4; i++) {
+            display.fillRect(0, i * 16, player.get_chl_vol(i)*2, 8, 1);
+            display.setCursor(60, i * 16);
+            display.printf("%d\n", player.get_chl_vol(i));
+            
+            display.fillRect(0, (i * 16) + 8, player.get_chl_env_vol(i)*2, 8, 1);
+            display.setCursor(60, (i * 16) + 8);
+            display.printf("%d\n", player.get_chl_env_vol(i));
         }
         display.display();
         vTaskDelay(4);
-        if (Serial.available()) {
-            printf("\n");
-            Serial.read();
-            break;
-        }
     }
+}
+
+void osc_cmd(int argc, const char* argv[]) {
+    xTaskCreate(osc_task, "OSC", 2048, NULL, 4, NULL);
+    // Serial.read();
+    // for (;;) {
+    //     display.clearDisplay();
+    //     for (uint8_t x = 0; x < 128; x++) {
+    //         display.drawPixel(x, (channel.get_buf()[x * 8] / 512) + 31, 1);
+    //     }
+    //     display.display();
+    //     vTaskDelay(4);
+    //     if (Serial.available()) {
+    //         printf("\n");
+    //         Serial.read();
+    //         break;
+    //     }
+    // }
 }
 
 #include "free_heap.h"

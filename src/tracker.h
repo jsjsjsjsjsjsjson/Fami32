@@ -37,6 +37,7 @@ public:
         memset(pos, 0, sizeof(pos));
         memset(status, 0, sizeof(pos));
         ftm_data = data;
+        instrument = &ftm_data->instrument[0];
         printf("INIT FTM_FILE IN %p\n", ftm_data);
     }
 
@@ -44,7 +45,7 @@ public:
         memset(pos, 0, sizeof(pos));
         memset(status, 0, sizeof(pos));
         inst_num = n;
-        printf("(DEBUG)INSTRUMENT_SIZE: %d\n", ftm_data->instrument.size());
+        // printf("(DEBUG)INSTRUMENT_SIZE: %d\n", ftm_data->instrument.size());
         instrument = &ftm_data->instrument[inst_num];
     }
 
@@ -61,6 +62,7 @@ public:
         for (int i = 0; i < 5; i++) {
             if (instrument->seq_index[i].enable) {
                 status[i] = SEQU_PLAYING;
+                var[i] = ftm_data->sequences[i][instrument->seq_index[i].seq_index].data[0];
             } else {
                 status[i] = SEQU_STOP;
                 var[i] = i ? 0 : 15;
@@ -119,6 +121,10 @@ public:
     note_stat_t get_status(int n) {
         return status[n];
     }
+
+    bool get_sequ_enable(int n) {
+        return instrument->seq_index[n].enable;
+    }
 };
 
 class FAMI_CHANNEL {
@@ -154,13 +160,19 @@ public:
     }
 
     void make_tick_sound() {
-        if (mode < 5) {
-            int8_t env_vol = 15;
-            if (mode != 2) env_vol = inst_proc.get_sequ_var(VOL_SEQU);
+        if (mode < 6) {
+            int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);;
+            if (mode == 4) env_vol = env_vol ? 15 : 0;
+            // printf("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
             for (int i = 0; i < tick_length; i++) {
                 i_pos = i_pos & 31;
                 tick_buf[i] = wave_table[mode][i_pos] * env_vol * chl_vol;
-                f_pos += pos_count;
+                if (mode == 4) {
+                    f_pos += pos_count / 2;
+                }
+                else {
+                    f_pos += pos_count;
+                }
                 if (f_pos > 1.0f) {
                     i_pos += (int)f_pos;
                     f_pos -= (int)f_pos;
@@ -170,20 +182,23 @@ public:
     }
 
     void update_tick() {
-        inst_proc.update_tick();
         // printf("(DEBUG)PIT: GET(%f) + ", get_period());
-        set_period(get_period()
-                    + (float)inst_proc.get_sequ_var(PIT_SEQU) +
-                    (float)(inst_proc.get_sequ_var(HPI_SEQU) * 10));
+        if (inst_proc.get_sequ_enable(DTY_SEQU) || inst_proc.get_sequ_var(HPI_SEQU)) {
+            set_period(get_period()
+                        + (float)inst_proc.get_sequ_var(PIT_SEQU) +
+                          (float)(inst_proc.get_sequ_var(HPI_SEQU) * 10));
+        }
         
         // printf("PIT(%d) + HPI(%d)*10 = %f\n", inst_proc.get_sequ_var(PIT_SEQU), (inst_proc.get_sequ_var(HPI_SEQU) * 10), get_period());
 
-        if (!inst_proc.get_sequ_var(PIT_SEQU)
-                && !inst_proc.get_sequ_var(HPI_SEQU)) set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
-        if (mode < 4 && inst_proc.get_status(4) == SEQU_STOP) {
+        if (!inst_proc.get_sequ_enable(DTY_SEQU) && !inst_proc.get_sequ_var(HPI_SEQU))
+            set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
+
+        if (mode < 4 && inst_proc.get_sequ_enable(DTY_SEQU))
             set_mode((WAVE_TYPE)inst_proc.get_sequ_var(DTY_SEQU));
-        }
+
         make_tick_sound();
+        inst_proc.update_tick();
     }
 
     void set_inst(int n) {
@@ -193,10 +208,14 @@ public:
 
     void note_start() {
         inst_proc.start();
+        i_pos = 0;
+        f_pos = 0;
     }
 
     void note_end() {
         inst_proc.end();
+        i_pos = 0;
+        f_pos = 0;
     }
 
     void set_period(float period_ref) {
@@ -229,13 +248,13 @@ public:
 
     void set_mode(WAVE_TYPE m) {
         mode = m;
-        printf("SET MODE: %d\n", mode);
+        // printf("SET MODE: %d\n", mode);
     }
 
     void set_note(uint8_t note) {
         base_note = note;
         set_note_rely(note);
-        // printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
+        printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
     void set_vol(uint8_t vol) {
@@ -244,6 +263,10 @@ public:
 
     uint8_t get_vol() {
         return chl_vol;
+    }
+
+    int8_t get_env_vol() {
+        return inst_proc.get_sequ_var(VOL_SEQU);
     }
 
     int16_t* get_buf() {
@@ -326,11 +349,19 @@ public:
         }
         for (size_t i = 0; i < buf.size(); i++) {
             int16_t r = 0;
-            for (int c = 0; c < 1; c++) {
+            for (int c = 0; c < 3; c++) {
                 r += channel[c].get_buf()[i];
             }
-            buf[i] = r * 2;
+            buf[i] = r;
         }
+    }
+
+    uint8_t get_chl_vol(int n) {
+        return channel[n].get_vol();
+    }
+
+    int8_t get_chl_env_vol(int n) {
+        return channel[n].get_env_vol();
     }
 
     void process_tick() {
@@ -344,18 +375,21 @@ public:
                 if (ft_item.note != NO_NOTE) {
                     if (ft_item.note >= 13) {
                         channel[c].note_end();
+                        printf("SET_VOL(C%d): NOTE_CUT\n", c);
                     } else {
+                        printf("SET_NOTE(C%d): %f\n", c, channel[c].get_freq());
                         channel[c].set_note(item2note(ft_item.note, ft_item.octave));
                         channel[c].note_start();
-                        channel[c].set_vol(15);
+                        // channel[c].set_vol(15);
                     }
                 }
                 if (ft_item.volume != NO_VOL) {
                     channel[c].set_vol(ft_item.volume);
+                    printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
                 }
                 if ((ft_item.fxdata[0].fx_cmd + ft_item.fxdata[0].fx_var) != NO_EFX) {
                     if (ft_item.fxdata[0].fx_cmd == 0x12) {
-                        printf("0x12: %d\n", ft_item.fxdata[0].fx_var);
+                        // printf("0x12: %d\n", ft_item.fxdata[0].fx_var);
                         channel[c].set_mode((WAVE_TYPE)ft_item.fxdata[0].fx_var);
                     }//  else if (ft_item.fxdata[0].fx_cmd == 0x01) {
                     //    set_speed(ft_item.fxdata[0].fx_var);
