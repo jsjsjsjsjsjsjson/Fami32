@@ -6,6 +6,10 @@
 #include <string.h>
 #include <vector>
 
+extern "C" {
+#include "dpcm.h"
+}
+
 typedef struct __attribute__((packed)) {
     char id[18];
     uint16_t version = 0x0440;
@@ -80,12 +84,20 @@ typedef struct __attribute__((packed)) {
     uint32_t pat_length;
 } FRAME_BLOCK;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     char id[16] = "DPCM SAMPLES";
     uint32_t version = 1;
     uint32_t size;
-    uint8_t sample_num = 0;
+    uint16_t sample_num = 0;
 } DPCM_SAMPLE_BLOCK;
+
+typedef struct {
+    uint32_t name_len;
+    char name[64];
+    uint32_t sample_size_byte;
+    std::vector<uint8_t> dpcm_data;
+    std::vector<int8_t> pcm_data;
+} dpcm_sample_t;
 
 typedef struct __attribute__((packed)) {
     uint8_t index;
@@ -168,6 +180,7 @@ public:
     SEQUENCES_BLOCK seq_block;
     FRAME_BLOCK fr_block;
     PATTERN_BLOCK pt_block;
+    DPCM_SAMPLE_BLOCK dpcm_block;
 
     uint32_t sequ_max = 0;
     uint32_t pattern_num = 0;
@@ -179,6 +192,8 @@ public:
     std::vector<std::vector<pattern_t>> patterns;
 
     std::vector<std::vector<std::vector<unpk_item_t>>> unpack_pt;
+
+    std::vector<dpcm_sample_t> dpcm_samples;
 
     int open_ftm(const char *filename);
 
@@ -204,9 +219,15 @@ public:
 
     void read_pattern_data();
 
+    void read_dpcm_block();
+
+    void read_dpcm_data();
+
     unpk_item_t get_pt_item(uint8_t c, uint8_t i, uint32_t r);
 
     void print_frame_data(int index);
+
+    uint8_t ch_fx_count(int n);
 
     void read_ftm_all();
 };

@@ -145,6 +145,9 @@ private:
     uint8_t base_note;
     uint8_t rely_note;
 
+    uint8_t noise_rate = 0;
+    uint8_t noise_rate_rel = 0;
+
     int tick_length = SAMP_RATE / ENG_SPEED;
     std::vector<int16_t> tick_buf;
 
@@ -160,9 +163,9 @@ public:
     }
 
     void make_tick_sound() {
-        if (mode < 6) {
-            int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);;
-            if (mode == 4) env_vol = env_vol ? 15 : 0;
+        if (mode < 5) {
+            int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
+            if (mode == TRIANGULAR) env_vol = env_vol ? 15 : 0;
             // printf("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
             for (int i = 0; i < tick_length; i++) {
                 i_pos = i_pos & 31;
@@ -178,24 +181,58 @@ public:
                     f_pos -= (int)f_pos;
                 }
             }
+        } else if (mode < 7) {
+            int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
+            for (int i = 0; i < tick_length; i++) {
+                // static int16_t lst_noise;
+                // f_pos += pos_count;
+                // if (f_pos > 1.0f) {
+                //     lst_noise = 0;
+                //     for (int i = 0; i < (int)f_pos; i++) {
+                //         if (mode == NOISE0) lst_noise += lfsr_step_mode0();
+                //         else if (mode == NOISE1) lst_noise += lfsr_step_mode0();
+                //     }
+                //     lst_noise = lst_noise / (int)f_pos;
+                //     f_pos -= (int)f_pos;
+                // }
+                // tick_buf[i] = lst_noise * env_vol * chl_vol;
+                tick_buf[i] = nes_noise_make(mode - 5) * env_vol * chl_vol;
+                // printf("tick_buf[%d] = %d\n", i, tick_buf[i]);
+            }
         }
     }
 
     void update_tick() {
         // printf("(DEBUG)PIT: GET(%f) + ", get_period());
-        if (inst_proc.get_sequ_enable(DTY_SEQU) || inst_proc.get_sequ_var(HPI_SEQU)) {
-            set_period(get_period()
-                        + (float)inst_proc.get_sequ_var(PIT_SEQU) +
-                          (float)(inst_proc.get_sequ_var(HPI_SEQU) * 10));
+        if (inst_proc.get_sequ_enable(PIT_SEQU) || inst_proc.get_sequ_enable(HPI_SEQU)) {
+            if (mode < 5) {
+                set_period(get_period()
+                            + (float)inst_proc.get_sequ_var(PIT_SEQU) +
+                            (float)(inst_proc.get_sequ_var(HPI_SEQU) * 16));
+            } else {
+                printf("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
+                set_noise_rate((noise_rate_rel - inst_proc.get_sequ_var(PIT_SEQU)) & 15);
+            }
         }
         
         // printf("PIT(%d) + HPI(%d)*10 = %f\n", inst_proc.get_sequ_var(PIT_SEQU), (inst_proc.get_sequ_var(HPI_SEQU) * 10), get_period());
 
-        if (!inst_proc.get_sequ_enable(DTY_SEQU) && !inst_proc.get_sequ_var(HPI_SEQU))
-            set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
+        if (inst_proc.get_sequ_enable(ARP_SEQU)) {
+            if (mode < 5) {
+                set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
+            } else {
+                printf("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
+                set_noise_rate_rel((noise_rate + inst_proc.get_sequ_var(ARP_SEQU)) & 15);
+            }
+        }
 
-        if (mode < 4 && inst_proc.get_sequ_enable(DTY_SEQU))
-            set_mode((WAVE_TYPE)inst_proc.get_sequ_var(DTY_SEQU));
+        if (inst_proc.get_sequ_enable(DTY_SEQU)) {
+            if (mode < 4) {
+                set_mode((WAVE_TYPE)inst_proc.get_sequ_var(DTY_SEQU));
+            } else {
+                set_mode((WAVE_TYPE)(inst_proc.get_sequ_var(DTY_SEQU) & 1));
+            }
+        }
 
         make_tick_sound();
         inst_proc.update_tick();
@@ -219,9 +256,13 @@ public:
     }
 
     void set_period(float period_ref) {
-        period = period_ref;
-        freq = period2freq(period);
-        pos_count = (freq / SAMP_RATE) * 32;
+        if (mode > 4) {
+            set_noise_rate((uint8_t)period_ref & 15);
+        } else {
+            period = period_ref;
+            freq = period2freq(period);
+            pos_count = (freq / SAMP_RATE) * 32;
+        }
         // printf("SET_PERIOD: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
@@ -232,10 +273,14 @@ public:
     }
 
     void set_note_rely(uint8_t note) {
-        rely_note = note;
-        period = note2period(note, 0);
-        freq = period2freq(period);
-        pos_count = (freq / SAMP_RATE) * 32;
+        if (mode > 4) {
+            set_noise_rate(note2noise(note));
+        } else {
+            rely_note = note;
+            period = note2period(note, 1);
+            freq = period2freq(period);
+            pos_count = (freq / SAMP_RATE) * 32;
+        }
     }
 
     float get_freq() {
@@ -246,15 +291,36 @@ public:
         return period;
     }
 
+    void set_noise_rate(uint8_t rate) {
+        noise_rate = rate;
+        set_noise_rate_rel(rate);
+    }
+
+    void set_noise_rate_rel(uint8_t rate) {
+        noise_rate_rel = rate;
+        update_noise_freq(noise_freq_table[0][noise_rate_rel]);
+    }
+
+    uint8_t get_noise_rate() {
+        return noise_rate_rel;
+    }
+
     void set_mode(WAVE_TYPE m) {
-        mode = m;
-        // printf("SET MODE: %d\n", mode);
+        if (mode > 4) {
+            m = (WAVE_TYPE)(m + 5);
+        }
+        else if (mode != TRIANGULAR) mode = m;
+        printf("SET MODE: %d\n", mode);
+    }
+
+    WAVE_TYPE get_mode() {
+        return mode;
     }
 
     void set_note(uint8_t note) {
         base_note = note;
         set_note_rely(note);
-        printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
+        // printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
     void set_vol(uint8_t vol) {
@@ -285,7 +351,7 @@ public:
 class FAMI_PLAYER {
 private:
     FTM_FILE *ftm_data;
-    FAMI_CHANNEL channel[4];
+
     uint32_t row = 0;
 
     int tick_count = 0;
@@ -300,6 +366,8 @@ private:
     std::vector<int16_t> buf;
 
 public:
+    FAMI_CHANNEL channel[4];
+
     void init(FTM_FILE* data) {
         ftm_data = data;
         channel[0].init(ftm_data);
@@ -309,7 +377,7 @@ public:
         channel[2].set_mode(TRIANGULAR);
 
         channel[3].init(ftm_data);
-        channel[4].set_mode(NOISE);
+        channel[3].set_mode(NOISE0);
 
         buf.resize(channel[0].get_buf_size());
 
@@ -349,10 +417,10 @@ public:
         }
         for (size_t i = 0; i < buf.size(); i++) {
             int16_t r = 0;
-            for (int c = 0; c < 3; c++) {
+            for (int c = 0; c < 4; c++) {
                 r += channel[c].get_buf()[i];
             }
-            buf[i] = r;
+            buf[i] = r / 2;
         }
     }
 
@@ -375,9 +443,9 @@ public:
                 if (ft_item.note != NO_NOTE) {
                     if (ft_item.note >= 13) {
                         channel[c].note_end();
-                        printf("SET_VOL(C%d): NOTE_CUT\n", c);
+                        // printf("SET_NOTE(C%d): NOTE_CUT\n", c);
                     } else {
-                        printf("SET_NOTE(C%d): %f\n", c, channel[c].get_freq());
+                        // printf("SET_NOTE(C%d): %f\n", c, channel[c].get_freq());
                         channel[c].set_note(item2note(ft_item.note, ft_item.octave));
                         channel[c].note_start();
                         // channel[c].set_vol(15);
@@ -385,7 +453,7 @@ public:
                 }
                 if (ft_item.volume != NO_VOL) {
                     channel[c].set_vol(ft_item.volume);
-                    printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
+                    // printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
                 }
                 if ((ft_item.fxdata[0].fx_cmd + ft_item.fxdata[0].fx_var) != NO_EFX) {
                     if (ft_item.fxdata[0].fx_cmd == 0x12) {

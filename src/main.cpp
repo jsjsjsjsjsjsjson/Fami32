@@ -77,6 +77,7 @@ void sound_task(void *arg) {
         // channel.update_tick();
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+        vTaskDelay(1);
         // printf("%u\n", writed);
     }
 }
@@ -121,11 +122,11 @@ void osc_task(void *arg) {
         for (uint8_t i = 0; i < 4; i++) {
             display.fillRect(0, i * 16, player.get_chl_vol(i)*2, 8, 1);
             display.setCursor(60, i * 16);
-            display.printf("%d\n", player.get_chl_vol(i));
+            display.printf("%02d  %d\n", player.get_chl_vol(i), player.channel[i].get_noise_rate());
             
             display.fillRect(0, (i * 16) + 8, player.get_chl_env_vol(i)*2, 8, 1);
             display.setCursor(60, (i * 16) + 8);
-            display.printf("%d\n", player.get_chl_env_vol(i));
+            display.printf("%02d  %d\n", player.get_chl_env_vol(i), player.channel[i].get_mode());
         }
         display.display();
         vTaskDelay(4);

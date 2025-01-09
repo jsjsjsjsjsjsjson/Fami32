@@ -145,6 +145,10 @@ float note2period(uint8_t midi_note, bool mode) {
         return (FCPU_HZ / (16.0f * (BASE_FREQ_HZ * exp2f((midi_note - 69) / 12.0f)))) - 1.0f;
 }
 
+uint8_t note2noise(uint8_t midi_note) {
+    return (midi_note - 8) & 15;
+}
+
 float period2freq(float period) {
     return FCPU_HZ / (16.0f * (period + 1.0f));
 }

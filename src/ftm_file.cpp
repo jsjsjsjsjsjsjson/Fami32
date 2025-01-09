@@ -322,6 +322,39 @@ void FTM_FILE::print_frame_data(int index) {
     }
 }
 
+void FTM_FILE::read_dpcm_block() {
+    fread(dpcm_block.id, 1, 16, ftm_file);
+    printf("DPCM HEADER: %s\n", dpcm_block.id);
+    fread(&dpcm_block.version, 4, 1, ftm_file);
+    printf("VERSION: %d\n", dpcm_block.version);
+    fread(&dpcm_block.size, 4, 1, ftm_file);
+    printf("SIZE: %d\n", dpcm_block.size);
+    fread(&dpcm_block.sample_num, 2, 1, ftm_file);
+    printf("SAMPLE_NUM: %d\n", dpcm_block.sample_num);
+}
+
+void FTM_FILE::read_dpcm_data() {
+    dpcm_samples.resize(dpcm_block.sample_num);
+    printf("RESIZE DPCM_SAMPLES TO %d\n", dpcm_samples.size());
+    for (int i = 0; i < dpcm_block.sample_num; i++) {
+        printf("\n#%d\n", i);
+        fread(&dpcm_samples[i].name_len, 4, 1, ftm_file);
+        fread(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
+        printf("NAME(SIZE=%d): %s\n", dpcm_samples[i].name_len, dpcm_samples[i].name);
+        fread(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
+        dpcm_samples[i].dpcm_data.resize(dpcm_samples[i].sample_size_byte);
+        // printf("FTELL: %d\n", ftell(ftm_file));
+        fread(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte, ftm_file);
+        printf("SAMPLE SIZE(byte) = %d\n", dpcm_samples[i].sample_size_byte);
+        printf("DECODE...\n");
+        dpcm_samples[i].pcm_data.resize(dpcm_samples[i].sample_size_byte * 8);
+        decode_dpcm(dpcm_samples[i].dpcm_data.data(), dpcm_samples[i].sample_size_byte, dpcm_samples[i].pcm_data.data());
+        fseek(ftm_file, 1, SEEK_CUR);
+        // printf("FTELL: %d\n", ftell(ftm_file));
+        printf("SECCESS.\n");
+    }
+}
+
 void FTM_FILE::read_ftm_all() {
     if (ftm_file == NULL) {
         printf("No files were opened and could not be read.\n");
@@ -343,6 +376,13 @@ void FTM_FILE::read_ftm_all() {
 
     read_pattern_block();
     read_pattern_data();
+
+    read_dpcm_block();
+    read_dpcm_data();
+}
+
+uint8_t FTM_FILE::ch_fx_count(int n) {
+    return he_block.ch_fx[n] + 1;
 }
 
 FTM_FILE ftm;
