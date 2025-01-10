@@ -13,6 +13,7 @@ extern "C" {
 }
 
 TaskHandle_t SOUND_TASK_HD = NULL;
+TaskHandle_t OSC_TASK = NULL;
 
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
 
@@ -71,7 +72,8 @@ void sound_task(void *arg) {
     vTaskSuspend(NULL);
     size_t writed;
     player.init(&ftm);
-    channel.init(&ftm);
+    // channel.init(&ftm);
+    vTaskResume(OSC_TASK);
 
     for (;;) {
         // channel.update_tick();
@@ -115,18 +117,30 @@ void fast_test(int argc, const char* argv[]) {
 }
 
 void osc_task(void *arg) {
-    display.setTextColor(1);
+    display.fillScreen(1);
+    display.setTextSize(2);
+    display.setTextColor(0);
+    display.setCursor(1, 1);
+    display.printf("Fami32");
+    display.setCursor(1, 18);
     display.setTextSize(1);
+    display.printf("READY.\n");
+    display.setTextColor(1);
+    display.display();
+    vTaskSuspend(NULL);
     for (;;) {
         display.clearDisplay();
         for (uint8_t i = 0; i < 4; i++) {
             display.fillRect(0, i * 16, player.get_chl_vol(i)*2, 8, 1);
-            display.setCursor(60, i * 16);
-            display.printf("%02d  %d\n", player.get_chl_vol(i), player.channel[i].get_noise_rate());
+            display.setCursor(64, i * 16);
+            display.printf("%02d  %02d\n", player.get_chl_vol(i), player.channel[i].get_noise_rate());
             
             display.fillRect(0, (i * 16) + 8, player.get_chl_env_vol(i)*2, 8, 1);
-            display.setCursor(60, (i * 16) + 8);
-            display.printf("%02d  %d\n", player.get_chl_env_vol(i), player.channel[i].get_mode());
+            display.setCursor(64, (i * 16) + 8);
+            display.printf("%02d  %02d\n", player.get_chl_env_vol(i), player.channel[i].get_mode());
+        }
+        for (uint8_t x = 0; x < 128; x++) {
+            display.drawPixel(x, (player.get_buf()[x * 8] / 128) + 31, 1);
         }
         display.display();
         vTaskDelay(4);
@@ -134,7 +148,7 @@ void osc_task(void *arg) {
 }
 
 void osc_cmd(int argc, const char* argv[]) {
-    xTaskCreate(osc_task, "OSC", 2048, NULL, 4, NULL);
+    vTaskResume(OSC_TASK);
     // Serial.read();
     // for (;;) {
     //     display.clearDisplay();
@@ -192,6 +206,7 @@ void setup() {
     }
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 5, &SOUND_TASK_HD);
     xTaskCreate(shell, "SHELL", 4096, NULL, 3, NULL);
+    xTaskCreate(osc_task, "OSC", 2048, NULL, 4, &OSC_TASK);
 }
 
 void loop() {

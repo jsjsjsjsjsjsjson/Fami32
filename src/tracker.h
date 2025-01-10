@@ -140,7 +140,7 @@ private:
     float freq;
     float period;
 
-    uint8_t chl_vol = 15;
+    int8_t chl_vol = 15;
 
     uint8_t base_note;
     uint8_t rely_note;
@@ -148,10 +148,31 @@ private:
     uint8_t noise_rate = 0;
     uint8_t noise_rate_rel = 0;
 
+    int sample_pos = 0;
+    float sample_fpos = 0.0f;
+    uint8_t sample_pitch = 0;
+    int sample_num = 0;
+    bool sample_status = false;
+
+    int8_t sample_loop = false;
+
+    size_t sample_len = 0;
+
+    int8_t sample_var = 0;
+
     int tick_length = SAMP_RATE / ENG_SPEED;
     std::vector<int16_t> tick_buf;
 
     WAVE_TYPE mode;
+
+    //FX Flag
+    uint8_t slide_up = 0;
+    uint8_t slide_down = 0;
+
+    uint8_t vol_slide_up = 0;
+    uint8_t vol_slide_down = 0;
+
+    uint8_t vol_count = 0;
 
 public:
 
@@ -160,6 +181,32 @@ public:
         inst_proc.init(data);
         tick_buf.resize(tick_length);
         printf("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
+    }
+
+    void set_slide_up(uint8_t n) {
+        slide_up = n;
+        slide_down = 0;
+    }
+
+    void set_slide_down(uint8_t n) {
+        slide_down = n;
+        slide_up = 0;
+    }
+
+    void set_vol_slide_up(uint8_t n) {
+        vol_count = 0;
+        if (n)
+            vol_slide_up = roundf(8.0f / n);
+        else
+            vol_slide_up = 0;
+    }
+
+    void set_vol_slide_down(uint8_t n) {
+        vol_count = 0;
+        if (n)
+            vol_slide_down = roundf(8.0f / n);
+        else
+            vol_slide_down = 0;
     }
 
     void make_tick_sound() {
@@ -181,47 +228,58 @@ public:
                     f_pos -= (int)f_pos;
                 }
             }
-        } else if (mode < 7) {
+        } else if (mode > 5) {
             int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
             for (int i = 0; i < tick_length; i++) {
-                // static int16_t lst_noise;
-                // f_pos += pos_count;
-                // if (f_pos > 1.0f) {
-                //     lst_noise = 0;
-                //     for (int i = 0; i < (int)f_pos; i++) {
-                //         if (mode == NOISE0) lst_noise += lfsr_step_mode0();
-                //         else if (mode == NOISE1) lst_noise += lfsr_step_mode0();
-                //     }
-                //     lst_noise = lst_noise / (int)f_pos;
-                //     f_pos -= (int)f_pos;
-                // }
-                // tick_buf[i] = lst_noise * env_vol * chl_vol;
-                tick_buf[i] = nes_noise_make(mode - 5) * env_vol * chl_vol;
-                // printf("tick_buf[%d] = %d\n", i, tick_buf[i]);
+                tick_buf[i] = nes_noise_make(mode - 6) * env_vol * chl_vol;
             }
+        } else if (mode == DPCM_SAMPLE) {
+            float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
+            if (sample_num < ftm_data->dpcm_samples.size()) {
+                int8_t *sample = ftm_data->dpcm_samples[sample_num].pcm_data.data();
+                for (int i = 0; i < tick_length; i++) {
+                    if (sample_status) {
+                        sample_var = sample[sample_pos];
+                        sample_fpos += count;
+                        if (sample_fpos > 1.0f) {
+                            sample_pos += (int)sample_fpos;
+                            sample_fpos -= (int)sample_fpos;
+                            if (sample_pos >= sample_len) {
+                                if (sample_loop) {
+                                    sample_pos = 0;
+                                } else {
+                                    sample_fpos = 0;
+                                    sample_pos = 0;
+                                    sample_status = false;
+                                }
+                            }
+                        }
+                    }
+                    tick_buf[i] = sample_var * 64;
+                }
+            }
+        } else {
+            memset(tick_buf.data(), 0, tick_buf.size() * sizeof(int16_t));
         }
     }
 
     void update_tick() {
-        // printf("(DEBUG)PIT: GET(%f) + ", get_period());
         if (inst_proc.get_sequ_enable(PIT_SEQU) || inst_proc.get_sequ_enable(HPI_SEQU)) {
             if (mode < 5) {
                 set_period(get_period()
                             + (float)inst_proc.get_sequ_var(PIT_SEQU) +
                             (float)(inst_proc.get_sequ_var(HPI_SEQU) * 16));
-            } else {
-                printf("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
+            } else if (mode > 5) {
+                // printf("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
                 set_noise_rate((noise_rate_rel - inst_proc.get_sequ_var(PIT_SEQU)) & 15);
             }
         }
-        
-        // printf("PIT(%d) + HPI(%d)*10 = %f\n", inst_proc.get_sequ_var(PIT_SEQU), (inst_proc.get_sequ_var(HPI_SEQU) * 10), get_period());
 
         if (inst_proc.get_sequ_enable(ARP_SEQU)) {
             if (mode < 5) {
                 set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
-            } else {
-                printf("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
+            } else if (mode > 5) {
+                // printf("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
                 set_noise_rate_rel((noise_rate + inst_proc.get_sequ_var(ARP_SEQU)) & 15);
             }
         }
@@ -229,30 +287,61 @@ public:
         if (inst_proc.get_sequ_enable(DTY_SEQU)) {
             if (mode < 4) {
                 set_mode((WAVE_TYPE)inst_proc.get_sequ_var(DTY_SEQU));
-            } else {
+            } else if (mode > 5) {
                 set_mode((WAVE_TYPE)(inst_proc.get_sequ_var(DTY_SEQU) & 1));
             }
         }
 
         make_tick_sound();
         inst_proc.update_tick();
+
+        if (mode != DPCM_SAMPLE) {
+            if (slide_up) {
+                set_period(get_period() - slide_up);
+            } else if (slide_down) {
+                set_period(get_period() + slide_down);
+            }
+
+            if (vol_slide_up) {
+                vol_count++;
+                if (vol_count >= vol_slide_up) {
+                    set_vol(get_vol() + 1);
+                    vol_count = 0;
+                }
+            }
+
+            if (vol_slide_down) {
+                vol_count++;
+                if (vol_count >= vol_slide_down) {
+                    set_vol(get_vol() - 1);
+                    vol_count = 0;
+                }
+            }
+        }
     }
 
     void set_inst(int n) {
-        printf("SET INST: %d\n", n);
+        // printf("SET INST: %d\n", n);
         inst_proc.set_inst(n);
     }
 
     void note_start() {
-        inst_proc.start();
-        i_pos = 0;
-        f_pos = 0;
+        if (mode != DPCM_SAMPLE) {
+            inst_proc.start();
+        } else {
+            sample_fpos = 0;
+            sample_pos = 0;
+            sample_status = true;
+        }
     }
 
     void note_end() {
-        inst_proc.end();
-        i_pos = 0;
-        f_pos = 0;
+        if (mode != DPCM_SAMPLE) {
+            inst_proc.end();
+        } else {
+            sample_var = 0;
+            sample_status = false;
+        }
     }
 
     void set_period(float period_ref) {
@@ -273,13 +362,20 @@ public:
     }
 
     void set_note_rely(uint8_t note) {
-        if (mode > 4) {
+        if (mode > 5) {
             set_noise_rate(note2noise(note));
-        } else {
+        } else if (mode < 5) {
             rely_note = note;
             period = note2period(note, 1);
             freq = period2freq(period);
             pos_count = (freq / SAMP_RATE) * 32;
+        } else if (mode == DPCM_SAMPLE) {
+            sample_num = inst_proc.get_inst()->dpcm[note - 24].index - 1;
+            sample_loop = inst_proc.get_inst()->dpcm[note - 24].loop;
+            sample_pitch = inst_proc.get_inst()->dpcm[note - 24].pitch;
+            sample_len = ftm_data->dpcm_samples[sample_num].sample_size_byte * 8;
+            printf("DPCM_CHANNEL: SET NUM->%d, PITCH->%d, LOOP->%d, SMP_LEN->%d\n", sample_num, sample_pitch, sample_loop, sample_len);
+            sample_pos = 0;
         }
     }
 
@@ -305,12 +401,21 @@ public:
         return noise_rate_rel;
     }
 
+    void set_dpcm_pitch(uint8_t pit) {
+        sample_pitch = pit;
+    }
+
+    uint8_t get_dpcm_pitch() {
+        return sample_pitch;
+    }
+
     void set_mode(WAVE_TYPE m) {
-        if (mode > 4) {
-            m = (WAVE_TYPE)(m + 5);
+        if (mode > DPCM_SAMPLE) {
+            mode = (WAVE_TYPE)(m + NOISE0);
+        } else if (mode != TRIANGULAR) {
+            mode = m;
         }
-        else if (mode != TRIANGULAR) mode = m;
-        printf("SET MODE: %d\n", mode);
+        // printf("SET MODE: %d\n", mode);
     }
 
     WAVE_TYPE get_mode() {
@@ -323,11 +428,16 @@ public:
         // printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
-    void set_vol(uint8_t vol) {
+    void set_vol(int8_t vol) {
+        if (vol < 0)
+            vol = 0;
+        else if (vol > 15)
+            vol = 15;
+
         chl_vol = vol;
     }
 
-    uint8_t get_vol() {
+    int8_t get_vol() {
         return chl_vol;
     }
 
@@ -352,32 +462,31 @@ class FAMI_PLAYER {
 private:
     FTM_FILE *ftm_data;
 
-    uint32_t row = 0;
+    int row = 0;
+    int frame = 0;
 
-    int tick_count = 0;
+    float tick_accumulator = 0.0f;
 
     int speed = 150;
     int tempo = 3;
 
-    int frame = 0;
-
-    int ticks_row = 0;
+    float ticks_row = 0.0f;
 
     std::vector<int16_t> buf;
 
 public:
-    FAMI_CHANNEL channel[4];
+    FAMI_CHANNEL channel[5];
 
     void init(FTM_FILE* data) {
         ftm_data = data;
-        channel[0].init(ftm_data);
-        channel[1].init(ftm_data);
+        for (int c = 0; c < 5; c++) {
+            channel[c].init(ftm_data);
+        }
 
-        channel[2].init(ftm_data);
         channel[2].set_mode(TRIANGULAR);
-
-        channel[3].init(ftm_data);
         channel[3].set_mode(NOISE0);
+
+        channel[4].set_mode(DPCM_SAMPLE);
 
         buf.resize(channel[0].get_buf_size());
 
@@ -387,37 +496,37 @@ public:
 
     void set_speed(int speed_ref) {
         speed = speed_ref;
-        ticks_row = 150 * speed / tempo;
+        recalculate_ticks_row();
     }
 
     void set_tempo(int tempo_ref) {
         tempo = tempo_ref;
-        ticks_row = 150 * speed / tempo;
+        recalculate_ticks_row();
     }
 
-    int get_speed() {
+    int get_speed() const {
         return speed;
     }
 
-    int get_tempo() {
+    int get_tempo() const {
         return tempo;
     }
 
-    void set_ticks_row(int tr) {
+    void set_ticks_row(float tr) {
         ticks_row = tr;
     }
 
-    int get_ticks_row() {
+    float get_ticks_row() const {
         return ticks_row;
     }
 
     void mix_all_channel() {
-        for (int c = 0; c < 4; c++) {
+        for (int c = 0; c < 5; c++) {
             channel[c].update_tick();
         }
         for (size_t i = 0; i < buf.size(); i++) {
-            int16_t r = 0;
-            for (int c = 0; c < 4; c++) {
+            int32_t r = 0;
+            for (int c = 0; c < 5; c++) {
                 r += channel[c].get_buf()[i];
             }
             buf[i] = r / 2;
@@ -432,10 +541,44 @@ public:
         return channel[n].get_env_vol();
     }
 
+    void process_efx(fx_t fxdata[4], int c) {
+        uint8_t count = ftm_data->ch_fx_count(c);
+        for (uint8_t i = 0; i < count; i++) {
+            if (fxdata[i].fx_cmd == 0x01) {
+                if (fxdata[i].fx_var >= 0x20) {
+                    set_tempo(fxdata[i].fx_var);
+                    printf("C%d: SET TEMPO -> %d\n", c, fxdata[i].fx_var);
+                } else {
+                    set_speed(fxdata[i].fx_var);
+                    printf("C%d: SET SPEED -> %d\n", c, fxdata[i].fx_var);
+                }
+            } else if (fxdata[i].fx_cmd == 0x03) {
+                next_frame(fxdata[i].fx_var - 1);
+                printf("C%d: SKIP TO NEXT FRAME ROW %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x12) {
+                channel[c].set_mode((WAVE_TYPE)(fxdata[i].fx_var));
+                printf("C%d: SET MODE -> %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x10) {
+                channel[c].set_slide_up(fxdata[i].fx_var);
+                printf("C%d: SET SLIDE_UP -> %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x11) {
+                channel[c].set_slide_down(fxdata[i].fx_var);
+                printf("C%d: SET SLIDE_DOWN -> %d\n", c, fxdata[i].fx_var);
+            }  else if (fxdata[i].fx_cmd == 0x16) {
+                channel[c].set_vol_slide_up(HEX_B1(fxdata[i].fx_var));
+                channel[c].set_vol_slide_down(HEX_B2(fxdata[i].fx_var));
+                printf("C%d: SET VOL_SLIDE, UP->%d - DOWN->%d = %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var), HEX_B1(fxdata[i].fx_var) - HEX_B2(fxdata[i].fx_var));
+            } else if (fxdata[i].fx_cmd != NO_EFX) {
+                printf("UNKNOW CMD: %02X, PARAM=%02X\n", fxdata[i].fx_cmd, fxdata[i].fx_var);
+            }
+        }
+    }
+
     void process_tick() {
-        tick_count++;
-        if (tick_count > ticks_row) {
-            for (int c = 0; c < 4; c++) {
+        tick_accumulator += 1.0f;
+
+        while (tick_accumulator >= ticks_row) {
+            for (int c = 0; c < 5; c++) {
                 unpk_item_t ft_item = ftm_data->get_pt_item(c, ftm_data->frames[frame][c], row);
                 if (ft_item.instrument != NO_INST) {
                     channel[c].set_inst(ft_item.instrument);
@@ -455,35 +598,40 @@ public:
                     channel[c].set_vol(ft_item.volume);
                     // printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
                 }
-                if ((ft_item.fxdata[0].fx_cmd + ft_item.fxdata[0].fx_var) != NO_EFX) {
-                    if (ft_item.fxdata[0].fx_cmd == 0x12) {
-                        // printf("0x12: %d\n", ft_item.fxdata[0].fx_var);
-                        channel[c].set_mode((WAVE_TYPE)ft_item.fxdata[0].fx_var);
-                    }//  else if (ft_item.fxdata[0].fx_cmd == 0x01) {
-                    //    set_speed(ft_item.fxdata[0].fx_var);
-                    //}
-                }
+                process_efx(ft_item.fxdata, c);
             }
+
             row++;
             if (row >= ftm_data->fr_block.pat_length) {
-                row = 0;
-                frame++;
+                next_frame(0);
             }
-            tick_count = 0;
+
+            tick_accumulator -= ticks_row;
         }
+
         mix_all_channel();
+    }
+
+    void next_frame(int r) {
+        row = r;
+        frame++;
     }
 
     int16_t* get_buf() {
         return buf.data();
     }
 
-    size_t get_buf_size_byte() {
+    size_t get_buf_size_byte() const {
         return buf.size() * sizeof(int16_t);
     }
 
-    size_t get_buf_size() {
+    size_t get_buf_size() const {
         return buf.size();
+    }
+
+private:
+    void recalculate_ticks_row() {
+        ticks_row = (float)(150 * speed) / (float)tempo;
     }
 };
 

@@ -101,8 +101,8 @@ typedef struct {
 
 typedef struct __attribute__((packed)) {
     uint8_t index;
-    uint8_t loop : 4;
     uint8_t pitch : 4;
+    uint8_t loop : 4;
     uint8_t d_counte;
 } dpcm_t;
 
@@ -167,6 +167,9 @@ typedef struct {
 const char note2str[15][3] = {
     "--", "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-", "==", "--"
 };
+
+#define HEX_B1(n) (n >> 4)
+#define HEX_B2(n) (n & 0xf)
 
 class FTM_FILE {
 public:

@@ -10,6 +10,7 @@ typedef enum {
     PULSE_050,
     PULSE_075,
     TRIANGULAR,
+    DPCM_SAMPLE,
     NOISE0,
     NOISE1,
 } WAVE_TYPE;
@@ -27,6 +28,10 @@ const float noise_freq_table[2][16]
     {440.0f, 879.9f, 1761.6f, 2348.8f, 3523.2f, 4709.9f, 7046.3f, 8860.3f, 11186.1f, 13982.6f, 18643.5f, 27965.2f, 55930.4f, 111860.8f, 223721.6f, 447443.2f},
     {4.7f, 9.5f, 18.9f, 25.3f, 37.9f, 50.6f, 75.8f, 95.3f, 120.3f, 150.4f, 200.5f, 300.7f, 601.4f, 1202.8f, 2405.6f, 4811.2f}
     // {350, 700, 1330, 1750, 2660, 3570, 5320, 6650, 8400, 10500, 14070, 21070, 42070, 84210, 168420, 336770}
+};
+
+const float dpcm_pitch_table[16] {
+    4181.71f, 4709.93f, 5264.04f, 5593.04f, 6257.95f, 7046.35f, 7919.35f, 8363.43f, 9419.86f, 11186.08f, 12604.04f, 13982.60f, 16884.65f, 21306.82f, 24857.96f, 33143.94f
 };
 
 float phase = 0.0f;
@@ -51,7 +56,7 @@ int16_t nes_noise_make(bool mode) {
             shift_register = (shift_register >> 1) | feedback;
         }
 
-        sum_output += (shift_register & 1) ? 15 : -16;
+        sum_output += (shift_register & 1) ? -4 : 4;
     }
 
     return sum_output / 4;
