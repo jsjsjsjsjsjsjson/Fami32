@@ -326,21 +326,22 @@ public:
     }
 
     void note_start() {
-        if (mode != DPCM_SAMPLE) {
-            inst_proc.start();
-        } else {
+        if (mode == DPCM_SAMPLE) {
             sample_fpos = 0;
             sample_pos = 0;
             sample_status = true;
+        } else {
+            inst_proc.start();
+            i_pos = rand() & 31;
         }
     }
 
     void note_end() {
-        if (mode != DPCM_SAMPLE) {
-            inst_proc.end();
-        } else {
+        if (mode == DPCM_SAMPLE) {
             sample_var = 0;
             sample_status = false;
+        } else {
+            inst_proc.end();
         }
     }
 

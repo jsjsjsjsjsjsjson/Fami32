@@ -114,6 +114,7 @@ void fast_test(int argc, const char* argv[]) {
     ftm.open_ftm("/flash/5_pancake.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
+    srand(time(NULL));
 }
 
 void osc_task(void *arg) {
