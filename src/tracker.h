@@ -81,6 +81,13 @@ public:
         }
     }
 
+    void cut() {
+        for (int i = 0; i < 5; i++) {
+            status[i] = SEQU_STOP;
+            var[i] = 0;
+        }    
+    }
+
     void update_tick() {
         for (int i = 0; i < 5; i++) {
             if (status[i]) {
@@ -174,6 +181,19 @@ private:
 
     uint8_t vol_count = 0;
 
+    uint8_t auto_port = 0;
+    float auto_port_source;
+    float auto_port_target;
+    bool auto_port_finish = true;
+
+    uint8_t vib_spd = 0;
+    uint8_t vib_dep = 0;
+
+    uint8_t vib_pos = 0;
+
+    float portup_target;
+    uint8_t portup_speed = 0;
+
 public:
 
     void init(FTM_FILE* data) {
@@ -186,11 +206,13 @@ public:
     void set_slide_up(uint8_t n) {
         slide_up = n;
         slide_down = 0;
+        auto_port = 0;
     }
 
     void set_slide_down(uint8_t n) {
         slide_down = n;
         slide_up = 0;
+        auto_port = 0;
     }
 
     void set_vol_slide_up(uint8_t n) {
@@ -209,6 +231,24 @@ public:
             vol_slide_down = 0;
     }
 
+    void set_auto_port(uint8_t n) {
+        auto_port = n;
+        auto_port_source = get_period();
+        auto_port_finish = true;
+        slide_up = 0;
+        slide_down = 0;
+    }
+
+    void set_vibrato(uint8_t spd, uint8_t dep) {
+        vib_spd = spd;
+        vib_dep = dep;
+    }
+
+    void set_port_up(uint8_t spd, uint8_t offset) {
+        portup_speed = spd;
+        portup_target = note2period(base_note + offset, 0);
+    }
+
     void make_tick_sound() {
         if (mode < 5) {
             int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
@@ -217,6 +257,9 @@ public:
             for (int i = 0; i < tick_length; i++) {
                 i_pos = i_pos & 31;
                 tick_buf[i] = wave_table[mode][i_pos] * env_vol * chl_vol;
+                if (!env_vol || !chl_vol) {
+                    continue;
+                }
                 if (mode == 4) {
                     f_pos += pos_count / 2;
                 }
@@ -293,7 +336,6 @@ public:
         }
 
         make_tick_sound();
-        inst_proc.update_tick();
 
         if (mode != DPCM_SAMPLE) {
             if (slide_up) {
@@ -317,7 +359,47 @@ public:
                     vol_count = 0;
                 }
             }
+
+            if (auto_port && !auto_port_finish) {
+                if (auto_port_source > auto_port_target) {
+                    if (get_period() > auto_port_target) {
+                        set_period(get_period() - auto_port);
+                    } else {
+                        rely_note = base_note;
+                        set_period(auto_port_target);
+                        auto_port_finish = true;
+                    }
+                } else if (auto_port_source < auto_port_target) {
+                    if (get_period() < auto_port_target) {
+                        set_period(get_period() + auto_port);
+                    } else {
+                        rely_note = base_note;
+                        set_period(auto_port_target);
+                        auto_port_finish = true;
+                    }
+                }
+            }
+
+            if (portup_speed) {
+                if (get_period() > portup_target) {
+                    set_period(get_period() - portup_speed);
+                } else {
+                    portup_speed = 0;
+                    set_period(portup_target);
+                }
+            }
+
+            if (vib_spd && vib_dep) {
+                vib_pos = (vib_pos + vib_spd) & 63;
+                int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
+                freq = period2freq(get_period() + vib_var);
+                pos_count = (freq / SAMP_RATE) * 32;
+            } else {
+                vib_pos = 0;
+            }
         }
+
+        inst_proc.update_tick();
     }
 
     void set_inst(int n) {
@@ -332,7 +414,7 @@ public:
             sample_status = true;
         } else {
             inst_proc.start();
-            i_pos = rand() & 31;
+            // i_pos = 8;
         }
     }
 
@@ -342,6 +424,15 @@ public:
             sample_status = false;
         } else {
             inst_proc.end();
+        }
+    }
+
+    void note_cut() {
+        if (mode == DPCM_SAMPLE) {
+            sample_var = 0;
+            sample_status = false;
+        } else {
+            inst_proc.cut();
         }
     }
 
@@ -425,7 +516,13 @@ public:
 
     void set_note(uint8_t note) {
         base_note = note;
-        set_note_rely(note);
+        if (auto_port) {
+            auto_port_source = get_period();
+            auto_port_target = note2period(note, 1);
+            auto_port_finish = false;
+        } else {
+            set_note_rely(note);
+        }
         // printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
@@ -474,6 +571,11 @@ private:
     float ticks_row = 0.0f;
 
     std::vector<int16_t> buf;
+
+    uint8_t delay_count[5] = {0, 0, 0, 0, 0};
+    bool delay_status[5] = {0, 0, 0, 0, 0};
+
+    unpk_item_t ft_items[5];
 
 public:
     FAMI_CHANNEL channel[5];
@@ -553,19 +655,32 @@ public:
                     set_speed(fxdata[i].fx_var);
                     printf("C%d: SET SPEED -> %d\n", c, fxdata[i].fx_var);
                 }
+            } else if (fxdata[i].fx_cmd == 0x0E) {
+                delay_count[c] += fxdata[i].fx_var;
+                delay_status[c] = true;
+                printf("C%d: SET DELAY -> %d\n", c, delay_count[c]);
             } else if (fxdata[i].fx_cmd == 0x03) {
                 next_frame(fxdata[i].fx_var - 1);
                 printf("C%d: SKIP TO NEXT FRAME ROW %d\n", c, fxdata[i].fx_var);
-            } else if (fxdata[i].fx_cmd == 0x12) {
-                channel[c].set_mode((WAVE_TYPE)(fxdata[i].fx_var));
-                printf("C%d: SET MODE -> %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x06) {
+                channel[c].set_auto_port(fxdata[i].fx_var);
+                printf("C%d: SET AUTO_PORT -> %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x0B) {
+                channel[c].set_vibrato(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                printf("C%d: SET VIBRATO SPEED -> %d, DEEP -> %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x10) {
                 channel[c].set_slide_up(fxdata[i].fx_var);
                 printf("C%d: SET SLIDE_UP -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x11) {
                 channel[c].set_slide_down(fxdata[i].fx_var);
                 printf("C%d: SET SLIDE_DOWN -> %d\n", c, fxdata[i].fx_var);
-            }  else if (fxdata[i].fx_cmd == 0x16) {
+            } else if (fxdata[i].fx_cmd == 0x12) {
+                channel[c].set_mode((WAVE_TYPE)(fxdata[i].fx_var));
+                printf("C%d: SET MODE -> %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x14) {
+                channel[c].set_port_up(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                printf("C%d: SET PORT_UP SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+            } else if (fxdata[i].fx_cmd == 0x16) {
                 channel[c].set_vol_slide_up(HEX_B1(fxdata[i].fx_var));
                 channel[c].set_vol_slide_down(HEX_B2(fxdata[i].fx_var));
                 printf("C%d: SET VOL_SLIDE, UP->%d - DOWN->%d = %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var), HEX_B1(fxdata[i].fx_var) - HEX_B2(fxdata[i].fx_var));
@@ -575,31 +690,47 @@ public:
         }
     }
 
+    void process_item(unpk_item_t item, int c) {
+        if (item.instrument != NO_INST) {
+            channel[c].set_inst(item.instrument);
+        }
+        if (item.note != NO_NOTE) {
+            if (item.note == 13) {
+                channel[c].note_end();
+            } else if (item.note == 14) {
+                channel[c].note_cut();
+            } else {
+                channel[c].set_note(item2note(item.note, item.octave));
+                channel[c].note_start();
+            }
+        }
+        if (item.volume != NO_VOL) {
+            channel[c].set_vol(item.volume);
+            // printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
+        }
+    }
+
     void process_tick() {
         tick_accumulator += 1.0f;
 
-        while (tick_accumulator >= ticks_row) {
+        for (int c = 0; c < 5; c++) {
+            if (!delay_status[c]) {
+                continue;
+            }
+            if (delay_count[c]) {
+                delay_count[c]--;
+            } else {
+                process_item(ft_items[c], c);
+                delay_status[c] = false;
+            }
+        }
+
+        while (tick_accumulator > ticks_row) {
             for (int c = 0; c < 5; c++) {
-                unpk_item_t ft_item = ftm_data->get_pt_item(c, ftm_data->frames[frame][c], row);
-                if (ft_item.instrument != NO_INST) {
-                    channel[c].set_inst(ft_item.instrument);
-                }
-                if (ft_item.note != NO_NOTE) {
-                    if (ft_item.note >= 13) {
-                        channel[c].note_end();
-                        // printf("SET_NOTE(C%d): NOTE_CUT\n", c);
-                    } else {
-                        // printf("SET_NOTE(C%d): %f\n", c, channel[c].get_freq());
-                        channel[c].set_note(item2note(ft_item.note, ft_item.octave));
-                        channel[c].note_start();
-                        // channel[c].set_vol(15);
-                    }
-                }
-                if (ft_item.volume != NO_VOL) {
-                    channel[c].set_vol(ft_item.volume);
-                    // printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
-                }
-                process_efx(ft_item.fxdata, c);
+                ft_items[c] = ftm_data->get_pt_item(c, ftm_data->frames[frame][c], row);
+                process_efx(ft_items[c].fxdata, c);
+                if (!delay_count[c])
+                    process_item(ft_items[c], c);
             }
 
             row++;

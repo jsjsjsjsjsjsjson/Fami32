@@ -21,7 +21,8 @@ public:
     void begin(long baudRate, const char *termPrompt) {
         Serial0.begin(baudRate);
         strncpy(prompt, termPrompt, 31);
-        Serial0.println("Serial0 Terminal Started");
+        Serial0.println("Serial Terminal Started");
+        Serial0.printf("%s %s\n", __DATE__, __TIME__);
         printPrompt();
         // 添加内置的帮助命令
         addCommand("help", helpCmd);

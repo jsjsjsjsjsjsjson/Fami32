@@ -111,7 +111,7 @@ void set_inst_cmd(int argc, const char* argv[]) {
 }
 
 void fast_test(int argc, const char* argv[]) {
-    ftm.open_ftm("/flash/5_pancake.ftm");
+    ftm.open_ftm("/flash/11 - gyms - Magmo's Magical Ingot.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
     srand(time(NULL));
@@ -125,7 +125,7 @@ void osc_task(void *arg) {
     display.printf("Fami32");
     display.setCursor(1, 18);
     display.setTextSize(1);
-    display.printf("READY.\n");
+    display.printf("%s %s\n READY.", __DATE__, __TIME__);
     display.setTextColor(1);
     display.display();
     vTaskSuspend(NULL);
@@ -166,12 +166,21 @@ void osc_cmd(int argc, const char* argv[]) {
     // }
 }
 
+void rm_cmd(int argc, const char* argv[]) {
+    if (argc < 2) {
+        printf("%s <filename>\n");
+        return;
+    }
+    remove(argv[1]);
+}
+
 #include "free_heap.h"
 
 void shell(void *arg) {
     SerialTerminal terminal;
     terminal.begin(115200, "Fami32");
     terminal.addCommand("ls", ls_entry);
+    terminal.addCommand("rm", rm_cmd);
     terminal.addCommand("free", free_command);
     terminal.addCommand("reboot", reboot_cmd);
     terminal.addCommand("exit", reboot_cmd);
@@ -197,7 +206,7 @@ void setup() {
     esp_vfs_littlefs_conf_t littlefs_conf = {
         .base_path = "/flash",
         .partition_label = "spiffs",
-        .format_if_mount_failed = true
+        .format_if_mount_failed = false
     };
     esp_err_t ret = esp_vfs_littlefs_register(&littlefs_conf);
     if (ret == ESP_OK) {
