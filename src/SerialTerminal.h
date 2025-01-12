@@ -65,7 +65,7 @@ public:
     }
 
     static void helpCmd(int argc, const char* argv[]) {
-        if (instance != nullptr) { // 检查instance是否为空
+        if (instance != nullptr) {
             Serial0.println("Available commands:");
             for (int i = 0; i < instance->cmdListSize; i++) {
                 Serial0.println(instance->cmdList[i].name);

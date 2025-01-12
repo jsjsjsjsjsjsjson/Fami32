@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Adafruit_SSD1306.h>
-#include <esp_littlefs.h>
+// #include <esp_littlefs.h>
+#include <esp_vfs_fat.h>
 #include <driver/i2s_std.h>
 #include "chipbox_pin.h"
 #include "ftm_file.h"
@@ -114,7 +115,7 @@ void fast_test(int argc, const char* argv[]) {
     ftm.open_ftm("/flash/11 - gyms - Magmo's Magical Ingot.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
-    srand(time(NULL));
+    // srand(time(NULL));
 }
 
 void osc_task(void *arg) {
@@ -174,6 +175,11 @@ void rm_cmd(int argc, const char* argv[]) {
     remove(argv[1]);
 }
 
+void format_fs(int argc, const char* argv[]) {
+    printf("Formating...\n");
+    esp_vfs_fat_spiflash_format_rw_wl("/flash", "spiffs");
+}
+
 #include "free_heap.h"
 
 void shell(void *arg) {
@@ -193,6 +199,7 @@ void shell(void *arg) {
     terminal.addCommand("start_note", start_note_cmd);
     terminal.addCommand("end_note", end_note_cmd);
     terminal.addCommand("fast_test", fast_test);
+    terminal.addCommand("format_fs", format_fs);
     for (;;) {
         terminal.update();
         vTaskDelay(1);
@@ -203,17 +210,14 @@ void setup() {
     SPI.begin(DISPLAY_SCL, -1, DISPLAY_SDA);
     display.begin();
     display.display();
-    esp_vfs_littlefs_conf_t littlefs_conf = {
-        .base_path = "/flash",
-        .partition_label = "spiffs",
-        .format_if_mount_failed = false
+    esp_vfs_fat_mount_config_t fat_conf = {
+        .format_if_mount_failed = true,
+        .max_files = 4
     };
-    esp_err_t ret = esp_vfs_littlefs_register(&littlefs_conf);
-    if (ret == ESP_OK) {
-        printf("\nLittleFS mounted!\n");
-        display.printf("LittleFS mounted!\n");
-        display.display();
-    }
+    wl_handle_t wl_handle;
+    esp_err_t ret = esp_vfs_fat_spiflash_mount("/flash", "spiffs", &fat_conf, &wl_handle);
+    printf("\nFATFS mount %d: %s\n", ret, esp_err_to_name(ret));
+    vTaskDelay(64);
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 5, &SOUND_TASK_HD);
     xTaskCreate(shell, "SHELL", 4096, NULL, 3, NULL);
     xTaskCreate(osc_task, "OSC", 2048, NULL, 4, &OSC_TASK);

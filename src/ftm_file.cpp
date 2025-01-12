@@ -95,16 +95,21 @@ void FTM_FILE::read_instrument_data() {
         fread(&inst_tmp, sizeof(instrument_t) - 64, 1, ftm_file);
         fread(&inst_tmp.name, inst_tmp.name_len, 1, ftm_file);
         inst_tmp.name[inst_tmp.name_len] = '\0';
-        instrument.push_back(inst_tmp);
-        printf("%02X->NAME: %s\n", instrument[i].index, instrument[i].name);
-        printf("TYPE: 0x%X\n", instrument[i].type);
-        printf("SEQU COUNT: %d\n", instrument[i].seq_count);
+        if (inst_tmp.index >= instrument.size()) {
+            instrument.resize(inst_tmp.index + 1);
+            instrument[inst_tmp.index] = inst_tmp;
+        } else {
+            instrument[inst_tmp.index] = inst_tmp;
+        }
+        printf("%02X->NAME: %s\n", inst_tmp.index, inst_tmp.name);
+        printf("TYPE: 0x%X\n", inst_tmp.type);
+        printf("SEQU COUNT: %d\n", inst_tmp.seq_count);
         printf("SEQU DATA:\n");
-        printf("VOL: %d %d\n", instrument[i].seq_index[0].enable, instrument[i].seq_index[0].seq_index);
-        printf("ARP: %d %d\n", instrument[i].seq_index[1].enable, instrument[i].seq_index[1].seq_index);
-        printf("PIT: %d %d\n", instrument[i].seq_index[2].enable, instrument[i].seq_index[2].seq_index);
-        printf("HIP: %d %d\n", instrument[i].seq_index[3].enable, instrument[i].seq_index[3].seq_index);
-        printf("DTY: %d %d\n", instrument[i].seq_index[4].enable, instrument[i].seq_index[4].seq_index);
+        printf("VOL: %d %d\n", inst_tmp.seq_index[0].enable, inst_tmp.seq_index[0].seq_index);
+        printf("ARP: %d %d\n", inst_tmp.seq_index[1].enable, inst_tmp.seq_index[1].seq_index);
+        printf("PIT: %d %d\n", inst_tmp.seq_index[2].enable, inst_tmp.seq_index[2].seq_index);
+        printf("HIP: %d %d\n", inst_tmp.seq_index[3].enable, inst_tmp.seq_index[3].seq_index);
+        printf("DTY: %d %d\n", inst_tmp.seq_index[4].enable, inst_tmp.seq_index[4].seq_index);
         printf("\n");
     }
 }
@@ -118,7 +123,7 @@ void FTM_FILE::read_sequences_block() {
 }
 
 void FTM_FILE::read_sequences_data() {
-    sequences.resize(instrument[0].seq_count);
+    sequences.resize(5);
     uint32_t index_map[seq_block.sequ_num][2];
     printf("\nREADING SEQUENCES, COUNT=%d\n", seq_block.sequ_num);
     for (int i = 0; i < seq_block.sequ_num; i++) {
@@ -241,11 +246,11 @@ void FTM_FILE::read_pattern_data() {
     while (ftell(ftm_file) < pt_end) {
         pattern_t pt_tmp;
         fread(&pt_tmp, 4, 4, ftm_file);
-        printf("\n#%d\n", count);
-        printf("TRACK: %d\n", pt_tmp.track);
-        printf("CHANNEL: %d\n", pt_tmp.channel);
-        printf("INDEX: %d\n", pt_tmp.index);
-        printf("ITEMS: %d\n", pt_tmp.items);
+        // printf("\n#%d\n", count);
+        // printf("TRACK: %d\n", pt_tmp.track);
+        // printf("CHANNEL: %d\n", pt_tmp.channel);
+        // printf("INDEX: %d\n", pt_tmp.index);
+        // printf("ITEMS: %d\n", pt_tmp.items);
         pt_tmp.item.resize(pt_tmp.items);
         int item_size = 10 + 2 * he_block.ch_fx[pt_tmp.channel];
         for (int i = 0; i < pt_tmp.items; i++) {
@@ -334,6 +339,10 @@ void FTM_FILE::read_dpcm_block() {
 }
 
 void FTM_FILE::read_dpcm_data() {
+    if (dpcm_block.size == 1) {
+        printf("NO DPCM SAMPLE\n");
+        return;
+    }
     dpcm_samples.resize(dpcm_block.sample_num);
     printf("RESIZE DPCM_SAMPLES TO %d\n", dpcm_samples.size());
     for (int i = 0; i < dpcm_block.sample_num; i++) {

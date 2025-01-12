@@ -11,6 +11,8 @@
 #include "wave_table.h"
 #include "src_config.h"
 
+#include "basic_dsp.h"
+
 #define VOL_SEQU 0
 #define ARP_SEQU 1
 #define PIT_SEQU 2
@@ -82,10 +84,11 @@ public:
     }
 
     void cut() {
+        memset(pos, 0, sizeof(pos));
         for (int i = 0; i < 5; i++) {
             status[i] = SEQU_STOP;
             var[i] = 0;
-        }    
+        }
     }
 
     void update_tick() {
@@ -252,7 +255,10 @@ public:
     void make_tick_sound() {
         if (mode < 5) {
             int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
-            if (mode == TRIANGULAR) env_vol = env_vol ? 15 : 0;
+            if (mode == TRIANGULAR) {
+                env_vol = env_vol ? 15 : 0;
+                chl_vol = chl_vol ? 15 : 0;
+            }
             // printf("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
             for (int i = 0; i < tick_length; i++) {
                 i_pos = i_pos & 31;
@@ -298,7 +304,7 @@ public:
                             }
                         }
                     }
-                    tick_buf[i] = sample_var * 64;
+                    tick_buf[i] = sample_var * 128;
                 }
             }
         } else {
@@ -437,7 +443,7 @@ public:
     }
 
     void set_period(float period_ref) {
-        if (mode > 4) {
+        if (mode > 5) {
             set_noise_rate((uint8_t)period_ref & 15);
         } else {
             period = period_ref;
@@ -463,6 +469,10 @@ public:
             pos_count = (freq / SAMP_RATE) * 32;
         } else if (mode == DPCM_SAMPLE) {
             sample_num = inst_proc.get_inst()->dpcm[note - 24].index - 1;
+            if (sample_num < 0) {
+                printf("DPCM_CHANNEL: WARN -> NO_SAMPLE\n");
+                return;
+            }
             sample_loop = inst_proc.get_inst()->dpcm[note - 24].loop;
             sample_pitch = inst_proc.get_inst()->dpcm[note - 24].pitch;
             sample_len = ftm_data->dpcm_samples[sample_num].sample_size_byte * 8;
@@ -504,6 +514,7 @@ public:
     void set_mode(WAVE_TYPE m) {
         if (mode > DPCM_SAMPLE) {
             mode = (WAVE_TYPE)(m + NOISE0);
+            printf("SET_NOISE_MODE: %d\n", mode);
         } else if (mode != TRIANGULAR) {
             mode = m;
         }
@@ -577,6 +588,9 @@ private:
 
     unpk_item_t ft_items[5];
 
+    LowPassFilter lpf;
+    HighPassFilter hpf;
+
 public:
     FAMI_CHANNEL channel[5];
 
@@ -595,6 +609,9 @@ public:
 
         set_speed(ftm_data->fr_block.speed);
         set_tempo(ftm_data->fr_block.tempo);
+
+        lpf.setCutoffFrequency(18000, SAMP_RATE);
+        hpf.setCutoffFrequency(20, SAMP_RATE);
     }
 
     void set_speed(int speed_ref) {
@@ -632,6 +649,9 @@ public:
             for (int c = 0; c < 5; c++) {
                 r += channel[c].get_buf()[i];
             }
+
+            r = hpf.process(r);
+            r = lpf.process(r);
             buf[i] = r / 2;
         }
     }
@@ -711,8 +731,6 @@ public:
     }
 
     void process_tick() {
-        tick_accumulator += 1.0f;
-
         for (int c = 0; c < 5; c++) {
             if (!delay_status[c]) {
                 continue;
@@ -725,7 +743,7 @@ public:
             }
         }
 
-        while (tick_accumulator > ticks_row) {
+        while (tick_accumulator >= ticks_row) {
             for (int c = 0; c < 5; c++) {
                 ft_items[c] = ftm_data->get_pt_item(c, ftm_data->frames[frame][c], row);
                 process_efx(ft_items[c].fxdata, c);
@@ -741,6 +759,7 @@ public:
             tick_accumulator -= ticks_row;
         }
 
+        tick_accumulator += 1.0f;
         mix_all_channel();
     }
 
@@ -764,6 +783,7 @@ public:
 private:
     void recalculate_ticks_row() {
         ticks_row = (float)(150 * speed) / (float)tempo;
+        tick_accumulator = ticks_row;
     }
 };
 
