@@ -711,7 +711,7 @@ public:
         set_speed(ftm_data->fr_block.speed);
         set_tempo(ftm_data->fr_block.tempo);
 
-        lpf.setCutoffFrequency(14000, SAMP_RATE);
+        lpf.setCutoffFrequency(18000, SAMP_RATE);
         hpf.setCutoffFrequency(20, SAMP_RATE);
     }
 
