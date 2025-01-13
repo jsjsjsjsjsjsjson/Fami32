@@ -15,7 +15,7 @@ public:
 
     SerialTerminal() 
         : cmdBufferIndex(0), cmdListSize(0) {
-        instance = this; // 在构造函数中设置instance
+        instance = this;
     }
 
     void begin(long baudRate, const char *termPrompt) {

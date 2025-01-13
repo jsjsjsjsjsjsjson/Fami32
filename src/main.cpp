@@ -13,6 +13,9 @@ extern "C" {
 #include "ls.h"
 }
 
+FAMI_CHANNEL channel;
+FAMI_PLAYER player;
+
 TaskHandle_t SOUND_TASK_HD = NULL;
 TaskHandle_t OSC_TASK = NULL;
 
@@ -43,8 +46,11 @@ void reboot_cmd(int argc, const char* argv[]) {
     esp_restart();
 }
 
-FAMI_CHANNEL channel;
-FAMI_PLAYER player;
+void serial_audio(int16_t *buf, size_t samp) {
+    for (size_t i = 0; i < samp; i++) {
+        Serial.write((int8_t)(buf[i] / 128));
+    }
+}
 
 void sound_task(void *arg) {
     i2s_chan_handle_t tx_handle;
@@ -73,15 +79,14 @@ void sound_task(void *arg) {
     vTaskSuspend(NULL);
     size_t writed;
     player.init(&ftm);
-    // channel.init(&ftm);
     vTaskResume(OSC_TASK);
+    Serial.begin(921600);
 
     for (;;) {
-        // channel.update_tick();
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+        serial_audio(player.get_buf(), player.get_buf_size());
         vTaskDelay(1);
-        // printf("%u\n", writed);
     }
 }
 
@@ -112,7 +117,7 @@ void set_inst_cmd(int argc, const char* argv[]) {
 }
 
 void fast_test(int argc, const char* argv[]) {
-    ftm.open_ftm("/flash/00 - jrlepage - Intro to 2a03 Puritans.ftm");
+    ftm.open_ftm("/flash/11 - gyms - Magmo's Magical Ingot.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
     // srand(time(NULL));

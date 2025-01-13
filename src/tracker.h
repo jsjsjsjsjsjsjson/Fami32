@@ -40,14 +40,14 @@ public:
         memset(status, 0, sizeof(pos));
         ftm_data = data;
         instrument = &ftm_data->instrument[0];
-        printf("INIT FTM_FILE IN %p\n", ftm_data);
+        Serial0.printf("INIT FTM_FILE IN %p\n", ftm_data);
     }
 
     void set_inst(int n) {
         memset(pos, 0, sizeof(pos));
         memset(status, 0, sizeof(pos));
         inst_num = n;
-        // printf("(DEBUG)INSTRUMENT_SIZE: %d\n", ftm_data->instrument.size());
+        // Serial0.printf("(DEBUG)INSTRUMENT_SIZE: %d\n", ftm_data->instrument.size());
         instrument = &ftm_data->instrument[inst_num];
     }
 
@@ -219,7 +219,7 @@ public:
         ftm_data = data;
         inst_proc.init(data);
         tick_buf.resize(tick_length);
-        printf("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
+        Serial0.printf("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
     }
 
     void set_slide_up(uint8_t n) {
@@ -280,24 +280,32 @@ public:
         arp_fx_n1 = 0;
         arp_fx_n2 = 0;
 
+        slide_up = 0;
+        slide_down = 0;
+
         portdown_speed = 0;
         auto_port = 0;
-        portup_speed = spd;
+        portup_speed = (spd * 2) + 1;
         portup_target = note2period(base_note + offset, 0);
+        base_note += offset;
     }
 
     void set_port_down(uint8_t spd, uint8_t offset) {
         arp_fx_n1 = 0;
         arp_fx_n2 = 0;
 
+        slide_up = 0;
+        slide_down = 0;
+
         portup_speed = 0;
         auto_port = 0;
-        portdown_speed = spd;
+        portdown_speed = (spd * 2) + 1;
         portdown_target = note2period(base_note - offset, 0);
+        base_note -= offset;
     }
 
     void set_delay_cut(uint8_t t) {
-        delay_cut_count = t + 1;
+        delay_cut_count = t;
         delay_cut_status = true;
     }
 
@@ -308,7 +316,7 @@ public:
                 env_vol = env_vol ? 15 : 0;
                 chl_vol = chl_vol ? 15 : 0;
             }
-            // printf("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
+            // Serial0.printf("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
             for (int i = 0; i < tick_length; i++) {
                 i_pos = i_pos & 31;
                 tick_buf[i] = wave_table[mode][i_pos] * env_vol * chl_vol;
@@ -369,7 +377,7 @@ public:
                                 + (float)inst_proc.get_sequ_var(PIT_SEQU) +
                                 (float)(inst_proc.get_sequ_var(HPI_SEQU) * 16));
                 } else if (mode > 5) {
-                    // printf("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
+                    // Serial0.printf("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
                     set_noise_rate((noise_rate_rel - inst_proc.get_sequ_var(PIT_SEQU)) & 15);
                 }
             }
@@ -378,7 +386,7 @@ public:
                 if (mode < 5) {
                     set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
                 } else if (mode > 5) {
-                    // printf("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
+                    // Serial0.printf("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
                     set_noise_rate_rel((noise_rate + inst_proc.get_sequ_var(ARP_SEQU)) & 15);
                 }
             }
@@ -487,7 +495,7 @@ public:
     }
 
     void set_inst(int n) {
-        // printf("SET INST: %d\n", n);
+        // Serial0.printf("SET INST: %d\n", n);
         inst_proc.set_inst(n);
     }
 
@@ -498,6 +506,8 @@ public:
             sample_status = true;
         } else {
             inst_proc.start();
+            portup_speed = 0;
+            portdown_speed = 0;
             // i_pos = 8;
         }
     }
@@ -531,6 +541,10 @@ public:
             sample_status = false;
         } else {
             inst_proc.cut();
+            auto_port = false;
+            auto_port_finish = true;
+            portup_speed = false;
+            portdown_speed = false;
         }
     }
 
@@ -542,7 +556,7 @@ public:
             freq = period2freq(period);
             pos_count = (freq / SAMP_RATE) * 32;
         }
-        // printf("SET_PERIOD: P=%f, F=%f, C=%f\n", period, freq, pos_count);
+        // Serial0.printf("SET_PERIOD: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
     void set_freq(float freq_ref) {
@@ -562,13 +576,13 @@ public:
         } else if (mode == DPCM_SAMPLE) {
             sample_num = inst_proc.get_inst()->dpcm[note - 24].index - 1;
             if (sample_num < 0) {
-                printf("DPCM_CHANNEL: WARN -> NO_SAMPLE\n");
+                Serial0.printf("DPCM_CHANNEL: WARN -> NO_SAMPLE\n");
                 return;
             }
             sample_loop = inst_proc.get_inst()->dpcm[note - 24].loop;
             sample_pitch = inst_proc.get_inst()->dpcm[note - 24].pitch;
             sample_len = ftm_data->dpcm_samples[sample_num].sample_size_byte * 8;
-            printf("DPCM_CHANNEL: SET NUM->%d, PITCH->%d, LOOP->%d, SMP_LEN->%d\n", sample_num, sample_pitch, sample_loop, sample_len);
+            Serial0.printf("DPCM_CHANNEL: SET NUM->%d, PITCH->%d, LOOP->%d, SMP_LEN->%d\n", sample_num, sample_pitch, sample_loop, sample_len);
             sample_pos = 0;
         }
     }
@@ -606,17 +620,17 @@ public:
     void set_mode(WAVE_TYPE m) {
         if (mode > DPCM_SAMPLE) {
             mode = (WAVE_TYPE)((m&1) + NOISE0);
-            // printf("SET_NOISE_MODE: %d\n", mode);
+            // Serial0.printf("SET_NOISE_MODE: %d\n", mode);
         } else if (mode != TRIANGULAR) {
             mode = m;
         }
-        // printf("SET MODE: %d\n", mode);
+        // Serial0.printf("SET MODE: %d\n", mode);
     }
 
     void set_chl_mode(WAVE_TYPE m) {
         if (mode > DPCM_SAMPLE) {
             chl_mode = (WAVE_TYPE)((m&1) + NOISE0);
-            printf("SET_NOISE_MODE(CHL): %d\n", chl_mode);
+            Serial0.printf("SET_NOISE_MODE(CHL): %d\n", chl_mode);
         } else if (mode != TRIANGULAR) {
             chl_mode = m;
         }
@@ -635,7 +649,7 @@ public:
         } else {
             set_note_rely(note);
         }
-        // printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
+        // Serial0.printf("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
     void set_vol(int8_t vol) {
@@ -711,8 +725,8 @@ public:
         set_speed(ftm_data->fr_block.speed);
         set_tempo(ftm_data->fr_block.tempo);
 
-        lpf.setCutoffFrequency(18000, SAMP_RATE);
-        hpf.setCutoffFrequency(20, SAMP_RATE);
+        lpf.setCutoffFrequency(48000, SAMP_RATE);
+        hpf.setCutoffFrequency(32, SAMP_RATE);
     }
 
     void set_speed(int speed_ref) {
@@ -769,9 +783,15 @@ public:
         uint8_t count = ftm_data->ch_fx_count(c);
         for (uint8_t i = 0; i < count; i++) {
             if (fxdata[i].fx_cmd == 0x0E) {
-                delay_count[c] = fxdata[i].fx_var;
-                delay_status[c] = true;
-                printf("C%d: SET DELAY -> %d\n", c, delay_count[c]);
+                if (fxdata[i].fx_var >= ticks_row) {
+                    Serial0.printf("C%d: WARN DELAY OUTOF TICKSROW\n", c);
+                    delay_count[c] = (uint8_t)ticks_row;
+                    delay_status[c] = true;
+                } else {
+                    delay_count[c] = fxdata[i].fx_var;
+                    delay_status[c] = true;
+                    Serial0.printf("C%d: SET DELAY -> %d\n", c, delay_count[c]);
+                }
             }
         }
     }
@@ -782,58 +802,61 @@ public:
             if (fxdata[i].fx_cmd == 0x01) {
                 if (fxdata[i].fx_var >= 0x20) {
                     set_tempo(fxdata[i].fx_var);
-                    printf("C%d: SET TEMPO -> %d\n", c, fxdata[i].fx_var);
+                    Serial0.printf("C%d: SET TEMPO -> %d\n", c, fxdata[i].fx_var);
                 } else {
                     set_speed(fxdata[i].fx_var);
-                    printf("C%d: SET SPEED -> %d\n", c, fxdata[i].fx_var);
+                    Serial0.printf("C%d: SET SPEED -> %d\n", c, fxdata[i].fx_var);
                 }
+            } else if (fxdata[i].fx_cmd == 0x02) {
+                jmp_to_frame(fxdata[i].fx_var);
+                Serial0.printf("C%d: JMP TO FRAME -> %02X\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x03) {
                 next_frame(fxdata[i].fx_var - 1);
-                printf("C%d: SKIP TO NEXT FRAME ROW %d\n", c, fxdata[i].fx_var);
+                Serial0.printf("C%d: SKIP TO NEXT FRAME ROW %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x06) {
                 channel[c].set_auto_port(fxdata[i].fx_var);
-                printf("C%d: SET AUTO_PORT -> %d\n", c, fxdata[i].fx_var);
+                Serial0.printf("C%d: SET AUTO_PORT -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x0A) {
                 channel[c].set_arp_fx(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-                printf("C%d: SET ARP -> N1 +%d, N2 +%d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                Serial0.printf("C%d: SET ARP -> N1 +%d, N2 +%d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x0B) {
                 channel[c].set_vibrato(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-                printf("C%d: SET VIBRATO SPEED -> %d, DEEP -> %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                Serial0.printf("C%d: SET VIBRATO SPEED -> %d, DEEP -> %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x0D) {
                 channel[c].set_period_offset(fxdata[i].fx_var - 0x80);
-                printf("C%d: SET PERIOD_OFFSET -> %d\n", c, fxdata[i].fx_var - 0x80);
+                Serial0.printf("C%d: SET PERIOD_OFFSET -> %d\n", c, fxdata[i].fx_var - 0x80);
             } else if (fxdata[i].fx_cmd == 0x0F) {
                 channel[c].set_dpcm_var(fxdata[i].fx_var);
-                printf("C%d: SET DPCM VAR -> %d\n", c, fxdata[i].fx_var);
+                Serial0.printf("C%d: SET DPCM VAR -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x10) {
                 channel[c].set_slide_up(fxdata[i].fx_var);
-                printf("C%d: SET SLIDE_UP -> %d\n", c, fxdata[i].fx_var);
+                Serial0.printf("C%d: SET SLIDE_UP -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x11) {
                 channel[c].set_slide_down(fxdata[i].fx_var);
-                printf("C%d: SET SLIDE_DOWN -> %d\n", c, fxdata[i].fx_var);
+                Serial0.printf("C%d: SET SLIDE_DOWN -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x12) {
                 channel[c].set_chl_mode((WAVE_TYPE)(fxdata[i].fx_var));
-                printf("C%d: SET MODE -> %d\n", c, fxdata[i].fx_var);
+                Serial0.printf("C%d: SET MODE -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x13) {
                 channel[c].set_dpcm_offset(fxdata[i].fx_var);
-                printf("C%d: SET DPCM OFFSET %d Bytes (%d Samples)\n", c, fxdata[i].fx_var, fxdata[i].fx_var * 8);
+                Serial0.printf("C%d: SET DPCM OFFSET %d Bytes (%d Samples)\n", c, fxdata[i].fx_var, fxdata[i].fx_var * 8);
             } else if (fxdata[i].fx_cmd == 0x14) {
                 channel[c].set_port_up(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-                printf("C%d: SET PORT_UP SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                Serial0.printf("C%d: SET PORT_UP SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x15) {
                 channel[c].set_port_down(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-                printf("C%d: SET PORT_DOWN SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                Serial0.printf("C%d: SET PORT_DOWN SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x16) {
                 channel[c].set_vol_slide_up(HEX_B1(fxdata[i].fx_var));
                 channel[c].set_vol_slide_down(HEX_B2(fxdata[i].fx_var));
-                printf("C%d: SET VOL_SLIDE, UP->%d - DOWN->%d = %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var), HEX_B1(fxdata[i].fx_var) - HEX_B2(fxdata[i].fx_var));
+                Serial0.printf("C%d: SET VOL_SLIDE, UP->%d - DOWN->%d = %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var), HEX_B1(fxdata[i].fx_var) - HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x17) {
                 channel[c].set_delay_cut(fxdata[i].fx_var);
-                printf("C%d: SET DELAY_CUT -> %d\n", fxdata[i].fx_var);
-            } else if (fxdata[i].fx_cmd == 0x1E) {
-                printf("");
+                Serial0.printf("C%d: SET DELAY_CUT -> %d\n", fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x0E) {
+                // Serial0.printf("");
             } else if (fxdata[i].fx_cmd != NO_EFX) {
-                printf("UNKNOW CMD: %02X, PARAM=%02X\n", fxdata[i].fx_cmd, fxdata[i].fx_var);
+                Serial0.printf("UNKNOW CMD: %02X, PARAM=%02X\n", fxdata[i].fx_cmd, fxdata[i].fx_var);
             }
         }
     }
@@ -855,7 +878,7 @@ public:
         }
         if (item.volume != NO_VOL) {
             channel[c].set_vol(item.volume);
-            // printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
+            // Serial0.printf("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
         }
     }
 
@@ -897,6 +920,11 @@ public:
     void next_frame(int r) {
         row = r;
         frame++;
+    }
+
+    void jmp_to_frame(int f) {
+        row = -1;
+        frame = f;
     }
 
     int16_t* get_buf() {
