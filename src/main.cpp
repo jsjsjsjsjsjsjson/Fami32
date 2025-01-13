@@ -112,7 +112,7 @@ void set_inst_cmd(int argc, const char* argv[]) {
 }
 
 void fast_test(int argc, const char* argv[]) {
-    ftm.open_ftm("/flash/11 - gyms - Magmo's Magical Ingot.ftm");
+    ftm.open_ftm("/flash/00 - jrlepage - Intro to 2a03 Puritans.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
     // srand(time(NULL));
@@ -135,17 +135,23 @@ void osc_task(void *arg) {
         for (uint8_t i = 0; i < 4; i++) {
             display.fillRect(0, i * 16, player.get_chl_vol(i)*2, 8, 1);
             display.setCursor(64, i * 16);
-            display.printf("%02d  %02d\n", player.get_chl_vol(i), player.channel[i].get_noise_rate());
+            if (i == 3)
+                display.printf("%02d   0%X\n", player.get_chl_vol(i), (int)player.channel[i].get_noise_rate());
+            else
+                display.printf("%02d  %03X\n", player.get_chl_vol(i), (int)player.channel[i].get_period());
             
             display.fillRect(0, (i * 16) + 8, player.get_chl_env_vol(i)*2, 8, 1);
             display.setCursor(64, (i * 16) + 8);
-            display.printf("%02d  %02d\n", player.get_chl_env_vol(i), player.channel[i].get_mode());
+            if (i == 3)
+                display.printf("%02d   %s\n", player.get_chl_env_vol(i), player.channel[i].get_mode() == NOISE1 ? "N1" : "N0");
+            else
+                display.printf("%02d   %02d\n", player.get_chl_env_vol(i), player.channel[i].get_mode());
         }
         for (uint8_t x = 0; x < 128; x++) {
             display.drawPixel(x, (player.get_buf()[x * 8] / 128) + 31, 1);
         }
         display.display();
-        vTaskDelay(4);
+        vTaskDelay(2);
     }
 }
 
