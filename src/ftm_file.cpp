@@ -1,6 +1,15 @@
 #include "ftm_file.h"
 extern int errno;
 
+FTM_FILE::FTM_FILE() {
+    patterns.resize(pr_block.channel);
+    unpack_pt.resize(pr_block.channel);
+    for (int c = 0; c < pr_block.channel; c++) {
+        unpack_pt[c].resize(1);
+        unpack_pt[c][0].resize(fr_block.pat_length);
+    }
+}
+
 int FTM_FILE::open_ftm(const char *filename) {
     ftm_file = fopen(filename, "rb+");
     if (ftm_file == NULL) {
@@ -262,7 +271,7 @@ void FTM_FILE::read_pattern_data() {
         } else {
             patterns[pt_tmp.channel][pt_tmp.index] = pt_tmp;
         }
-        printf("UNPACK...\n");
+        // printf("UNPACK...\n");
         if (pt_tmp.index >= unpack_pt[pt_tmp.channel].size()) {
             unpack_pt[pt_tmp.channel].resize(pt_tmp.index + 1);
         }
@@ -276,7 +285,7 @@ void FTM_FILE::read_pattern_data() {
             memcpy(unpack_pt[pt_tmp.channel][pt_tmp.index][pt_tmp.item[y].row].fxdata, pt_tmp.item[y].fxdata, 8);
         }
         count++;
-        printf("SECCESS.\n");
+        // printf("SECCESS.\n");
     }
     pattern_num = count;
 }

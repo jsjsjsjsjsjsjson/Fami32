@@ -8,6 +8,7 @@
 #include "tracker.h"
 #include "dirent.h"
 #include "SerialTerminal.h"
+#include "gui.h"
 
 extern "C" {
 #include "ls.h"
@@ -75,17 +76,17 @@ void sound_task(void *arg) {
 
     i2s_channel_init_std_mode(tx_handle, &std_cfg);
     i2s_channel_enable(tx_handle);
+    player.init(&ftm);
 
     vTaskSuspend(NULL);
     size_t writed;
-    player.init(&ftm);
     vTaskResume(OSC_TASK);
     Serial.begin(921600);
 
     for (;;) {
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
-        serial_audio(player.get_buf(), player.get_buf_size());
+        // serial_audio(player.get_buf(), player.get_buf_size());
         vTaskDelay(1);
     }
 }
@@ -117,7 +118,7 @@ void set_inst_cmd(int argc, const char* argv[]) {
 }
 
 void fast_test(int argc, const char* argv[]) {
-    ftm.open_ftm("/flash/11 - gyms - Magmo's Magical Ingot.ftm");
+    ftm.open_ftm("/flash/13 - Fearofdark - An Earth made of Molten Rock.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
     // srand(time(NULL));

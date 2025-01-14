@@ -274,6 +274,7 @@ public:
 
     void set_period_offset(int8_t var) {
         period_offset = var;
+        set_period(get_period());
     }
 
     void set_port_up(uint8_t spd, uint8_t offset) {
@@ -429,16 +430,22 @@ public:
 
             if (auto_port && !auto_port_finish) {
                 if (auto_port_source > auto_port_target) {
-                    if (get_period() > auto_port_target) {
+                    if (get_period() >= auto_port_target) {
                         set_period(get_period() - auto_port);
+                        if (get_period() < auto_port_target) {
+                            set_period(auto_port_target);
+                        }
                     } else {
                         rely_note = base_note;
                         set_period(auto_port_target);
                         auto_port_finish = true;
                     }
                 } else if (auto_port_source < auto_port_target) {
-                    if (get_period() < auto_port_target) {
+                    if (get_period() <= auto_port_target) {
                         set_period(get_period() + auto_port);
+                        if (get_period() > auto_port_target) {
+                            set_period(auto_port_target);
+                        }
                     } else {
                         rely_note = base_note;
                         set_period(auto_port_target);
@@ -455,7 +462,7 @@ public:
                     set_period(portup_target);
                 }
             } else if (portdown_speed) {
-                if (get_period() > portdown_target) {
+                if (get_period() < portdown_target) {
                     set_period(get_period() + portdown_speed);
                 } else {
                     portup_speed = 0;
@@ -552,8 +559,9 @@ public:
         if (mode > 5) {
             set_noise_rate((uint8_t)period_ref & 15);
         } else {
-            period = period_ref + (float)period_offset;
-            freq = period2freq(period);
+            period = period_ref;
+            freq = period2freq(period - period_offset);
+            // printf("PERIOD_OFF: %.1f\n", period_offset);
             pos_count = (freq / SAMP_RATE) * 32;
         }
         // Serial0.printf("SET_PERIOD: P=%f, F=%f, C=%f\n", period, freq, pos_count);
@@ -571,7 +579,7 @@ public:
         } else if (mode < 5) {
             rely_note = note;
             period = note2period(note, 1);
-            freq = period2freq(period);
+            freq = period2freq(period - period_offset);
             pos_count = (freq / SAMP_RATE) * 32;
         } else if (mode == DPCM_SAMPLE) {
             sample_num = inst_proc.get_inst()->dpcm[note - 24].index - 1;
@@ -592,7 +600,7 @@ public:
     }
 
     float get_period() {
-        return period;
+        return period - period_offset;
     }
 
     void set_noise_rate(uint8_t rate) {
@@ -725,7 +733,7 @@ public:
         set_speed(ftm_data->fr_block.speed);
         set_tempo(ftm_data->fr_block.tempo);
 
-        lpf.setCutoffFrequency(48000, SAMP_RATE);
+        lpf.setCutoffFrequency(18000, SAMP_RATE);
         hpf.setCutoffFrequency(32, SAMP_RATE);
     }
 
@@ -767,7 +775,7 @@ public:
 
             r = hpf.process(r);
             r = lpf.process(r);
-            buf[i] = r;
+            buf[i] = r / 2;
         }
     }
 

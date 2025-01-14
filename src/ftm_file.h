@@ -81,7 +81,7 @@ typedef struct __attribute__((packed)) {
     uint32_t frame_num;
     uint32_t speed = 3;
     uint32_t tempo = 150;
-    uint32_t pat_length;
+    uint32_t pat_length = 64;
 } FRAME_BLOCK;
 
 typedef struct __attribute__((packed)) {
@@ -173,6 +173,8 @@ const char note2str[15][3] = {
 
 class FTM_FILE {
 public:
+    FTM_FILE();
+
     FILE *ftm_file;
 
     FTM_HEADER header;
@@ -191,7 +193,7 @@ public:
     std::vector<std::vector<sequences_t>> sequences;
     std::vector<instrument_t> instrument;
 
-    std::vector<std::vector<uint8_t>> frames;
+    std::vector<std::vector<uint8_t>> frames = {{0, 0, 0, 0, 0}};
     std::vector<std::vector<pattern_t>> patterns;
 
     std::vector<std::vector<std::vector<unpk_item_t>>> unpack_pt;
@@ -201,37 +203,28 @@ public:
     int open_ftm(const char *filename);
 
     void read_param_block();
-
     void read_info_block();
 
     void read_header_block();
 
     void read_instrument_block();
-
     void read_instrument_data();
 
     void read_sequences_block();
-
     void read_sequences_data();
 
     void read_frame_block();
-
     void read_frame_data();
 
     void read_pattern_block();
-
     void read_pattern_data();
 
     void read_dpcm_block();
-
     void read_dpcm_data();
 
     unpk_item_t get_pt_item(uint8_t c, uint8_t i, uint32_t r);
-
     void print_frame_data(int index);
-
     uint8_t ch_fx_count(int n);
-
     void read_ftm_all();
 };
 
