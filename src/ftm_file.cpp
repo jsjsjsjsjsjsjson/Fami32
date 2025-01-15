@@ -132,6 +132,7 @@ void FTM_FILE::read_sequences_block() {
 }
 
 void FTM_FILE::read_sequences_data() {
+    sequences.clear();
     sequences.resize(5);
     uint32_t index_map[seq_block.sequ_num][2];
     printf("\nREADING SEQUENCES, COUNT=%d\n", seq_block.sequ_num);
@@ -248,6 +249,7 @@ void FTM_FILE::read_pattern_block() {
 
 void FTM_FILE::read_pattern_data() {
     patterns.clear();
+    unpack_pt.clear();
     patterns.resize(pr_block.channel);
     unpack_pt.resize(pr_block.channel);
     size_t pt_end = ftell(ftm_file) + pt_block.size;
@@ -291,7 +293,7 @@ void FTM_FILE::read_pattern_data() {
 }
 
 unpk_item_t FTM_FILE::get_pt_item(uint8_t c, uint8_t i, uint32_t r) {
-    if (i >= unpack_pt[c].size() || r >= unpack_pt[c][i].size()) {
+    if (c >= unpack_pt.size() || i >= unpack_pt[c].size() || r >= unpack_pt[c][i].size()) {
         unpk_item_t pt_tmp;
         return pt_tmp;
     }
@@ -348,6 +350,7 @@ void FTM_FILE::read_dpcm_block() {
 }
 
 void FTM_FILE::read_dpcm_data() {
+    dpcm_samples.clear();
     if (dpcm_block.size == 1) {
         printf("NO DPCM SAMPLE\n");
         return;
@@ -397,10 +400,19 @@ void FTM_FILE::read_ftm_all() {
 
     read_dpcm_block();
     read_dpcm_data();
+
+    fclose(ftm_file);
 }
 
 uint8_t FTM_FILE::ch_fx_count(int n) {
     return he_block.ch_fx[n] + 1;
+}
+
+uint8_t FTM_FILE::get_frame_map(int f, int c) {
+    if (f >= frames.size() || c >= frames[f].size()) {
+        return 0;
+    }
+    return frames[f][c];
 }
 
 FTM_FILE ftm;

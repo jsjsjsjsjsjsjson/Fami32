@@ -135,14 +135,12 @@ const float note2period_table[128] = {
     7.917579312805451f    // 12543.853951415975 Hz
 };
 
-#define BASE_FREQ_HZ 440.0f
 #define FCPU_HZ 1789773.0f
+float BASE_FREQ_HZ = 440.0f;
 
-float note2period(uint8_t midi_note, bool mode) {
-    if (mode)
-        return note2period_table[midi_note & 127];
-    else
-        return (FCPU_HZ / (16.0f * (BASE_FREQ_HZ * exp2f((midi_note - 69) / 12.0f)))) - 1.0f;
+float note2period(uint8_t midi_note) {
+    // return note2period_table[midi_note & 127];
+    return (FCPU_HZ / (16.0f * (BASE_FREQ_HZ * exp2f((midi_note - 69) / 12.0f)))) - 1.0f;
 }
 
 uint8_t note2noise(uint8_t midi_note) {

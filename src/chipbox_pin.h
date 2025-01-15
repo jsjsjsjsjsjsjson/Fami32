@@ -20,6 +20,13 @@
 #define KEYPAD_ROWS 4
 #define KEYPAD_COLS 3
 
+char KEYPAD_MAP[KEYPAD_ROWS][KEYPAD_COLS] = {
+    {KEY_L,    KEY_OK,   KEY_MENU},
+    {KEY_UP,   KEY_S,    KEY_NAVI},
+    {KEY_R,    KEY_BACK, KEY_OCTD},
+    {KEY_DOWN, KEY_P,    KEY_OCTU}
+};
+
 #define KEYPAD_R0 47
 #define KEYPAD_R1 18
 #define KEYPAD_R2 45

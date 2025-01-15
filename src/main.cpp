@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_Keypad.h>
 // #include <esp_littlefs.h>
 #include <esp_vfs_fat.h>
 #include <driver/i2s_std.h>
@@ -14,13 +15,16 @@ extern "C" {
 #include "ls.h"
 }
 
-FAMI_CHANNEL channel;
 FAMI_PLAYER player;
 
 TaskHandle_t SOUND_TASK_HD = NULL;
-TaskHandle_t OSC_TASK = NULL;
 
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
+
+Adafruit_Keypad keypad = Adafruit_Keypad(makeKeymap(KEYPAD_MAP),
+                                        (byte[KEYPAD_ROWS]){KEYPAD_R0, KEYPAD_R1, KEYPAD_R2, KEYPAD_R3},
+                                        (byte[KEYPAD_COLS]){KEYPAD_C0, KEYPAD_C1, KEYPAD_C2},
+                                        KEYPAD_ROWS, KEYPAD_COLS);
 
 void open_ftm_cmd(int argc, const char* argv[]) {
     if (argc < 2) {
@@ -54,6 +58,8 @@ void serial_audio(int16_t *buf, size_t samp) {
 }
 
 void sound_task(void *arg) {
+    player.init(&ftm);
+
     i2s_chan_handle_t tx_handle;
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     i2s_new_channel(&chan_cfg, &tx_handle, NULL);
@@ -76,12 +82,8 @@ void sound_task(void *arg) {
 
     i2s_channel_init_std_mode(tx_handle, &std_cfg);
     i2s_channel_enable(tx_handle);
-    player.init(&ftm);
 
-    vTaskSuspend(NULL);
     size_t writed;
-    vTaskResume(OSC_TASK);
-    Serial.begin(921600);
 
     for (;;) {
         player.process_tick();
@@ -92,91 +94,14 @@ void sound_task(void *arg) {
 }
 
 void start_fami_cmd(int argc, const char* argv[]) {
-    vTaskResume(SOUND_TASK_HD);
+    player.start_play();
     printf("START SOUND\n");
-}
-
-void start_note_cmd(int argc, const char* argv[]) {
-    if (argc < 2) {
-        printf("%s <note>\n", argv[0]);
-        return;
-    }
-    channel.set_note(strtol(argv[1], NULL, 0));
-    channel.note_start();
-}
-
-void end_note_cmd(int argc, const char* argv[]) {
-    channel.note_end();
-}
-
-void set_inst_cmd(int argc, const char* argv[]) {
-    if (argc < 2) {
-        printf("%s <inst>\n", argv[0]);
-        return;
-    }
-    channel.set_inst(strtol(argv[1], NULL, 0));
 }
 
 void fast_test(int argc, const char* argv[]) {
     ftm.open_ftm("/flash/13 - Fearofdark - An Earth made of Molten Rock.ftm");
     ftm.read_ftm_all();
     start_fami_cmd(0, NULL);
-    // srand(time(NULL));
-}
-
-void osc_task(void *arg) {
-    display.fillScreen(1);
-    display.setTextSize(2);
-    display.setTextColor(0);
-    display.setCursor(1, 1);
-    display.printf("Fami32");
-    display.setCursor(1, 18);
-    display.setTextSize(1);
-    display.printf("%s %s\n READY.", __DATE__, __TIME__);
-    display.setTextColor(1);
-    display.display();
-    vTaskSuspend(NULL);
-    for (;;) {
-        display.clearDisplay();
-        for (uint8_t i = 0; i < 4; i++) {
-            display.fillRect(0, i * 16, player.get_chl_vol(i)*2, 8, 1);
-            display.setCursor(64, i * 16);
-            if (i == 3)
-                display.printf("%02d   0%X\n", player.get_chl_vol(i), (int)player.channel[i].get_noise_rate());
-            else
-                display.printf("%02d  %03X\n", player.get_chl_vol(i), (int)player.channel[i].get_period());
-            
-            display.fillRect(0, (i * 16) + 8, player.get_chl_env_vol(i)*2, 8, 1);
-            display.setCursor(64, (i * 16) + 8);
-            if (i == 3)
-                display.printf("%02d   %s\n", player.get_chl_env_vol(i), player.channel[i].get_mode() == NOISE1 ? "N1" : "N0");
-            else
-                display.printf("%02d   %02d\n", player.get_chl_env_vol(i), player.channel[i].get_mode());
-        }
-        for (uint8_t x = 0; x < 128; x++) {
-            display.drawPixel(x, (player.get_buf()[x * 8] / 128) + 31, 1);
-        }
-        display.display();
-        vTaskDelay(2);
-    }
-}
-
-void osc_cmd(int argc, const char* argv[]) {
-    vTaskResume(OSC_TASK);
-    // Serial.read();
-    // for (;;) {
-    //     display.clearDisplay();
-    //     for (uint8_t x = 0; x < 128; x++) {
-    //         display.drawPixel(x, (channel.get_buf()[x * 8] / 512) + 31, 1);
-    //     }
-    //     display.display();
-    //     vTaskDelay(4);
-    //     if (Serial.available()) {
-    //         printf("\n");
-    //         Serial.read();
-    //         break;
-    //     }
-    // }
 }
 
 void rm_cmd(int argc, const char* argv[]) {
@@ -192,6 +117,23 @@ void format_fs(int argc, const char* argv[]) {
     esp_vfs_fat_spiflash_format_rw_wl("/flash", "spiffs");
 }
 
+extern float BASE_FREQ_HZ;
+
+void set_base_freq_cmd(int argc, const char* argv[]) {
+    if (argc < 2) {
+        printf("%s <Hz>\n");
+        return;
+    }
+    BASE_FREQ_HZ = strtol(argv[1], NULL, 0);
+    printf("BASE FREQ SET TO -> %d\n", (int)BASE_FREQ_HZ);
+}
+
+extern bool _debug_print;
+
+void set_debug_cmd(int argc, const char* argv[]) {
+    _debug_print = !_debug_print;
+}
+
 #include "free_heap.h"
 
 void shell(void *arg) {
@@ -202,19 +144,25 @@ void shell(void *arg) {
     terminal.addCommand("free", free_command);
     terminal.addCommand("reboot", reboot_cmd);
     terminal.addCommand("exit", reboot_cmd);
-    terminal.addCommand("osc", osc_cmd);
     terminal.addCommand("open_ftm", open_ftm_cmd);
     terminal.addCommand("read_ftm", read_ftm_cmd);
     terminal.addCommand("print_frame", print_frame_cmd);
     terminal.addCommand("start_fami", start_fami_cmd);
-    terminal.addCommand("set_inst", set_inst_cmd);
-    terminal.addCommand("start_note", start_note_cmd);
-    terminal.addCommand("end_note", end_note_cmd);
     terminal.addCommand("fast_test", fast_test);
     terminal.addCommand("format_fs", format_fs);
+    terminal.addCommand("set_debug", set_debug_cmd);
+    terminal.addCommand("set_base_freq", set_base_freq_cmd);
     for (;;) {
         terminal.update();
-        vTaskDelay(1);
+        vTaskDelay(2);
+    }
+}
+
+void keypad_task(void *arg) {
+    keypad.begin();
+    for (;;) {
+        keypad.tick();
+        vTaskDelay(4);
     }
 }
 
@@ -227,12 +175,13 @@ void setup() {
         .max_files = 4
     };
     wl_handle_t wl_handle;
-    esp_err_t ret = esp_vfs_fat_spiflash_mount("/flash", "spiffs", &fat_conf, &wl_handle);
+    esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "spiffs", &fat_conf, &wl_handle);
     printf("\nFATFS mount %d: %s\n", ret, esp_err_to_name(ret));
     vTaskDelay(64);
+    xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 5, &SOUND_TASK_HD);
-    xTaskCreate(shell, "SHELL", 4096, NULL, 3, NULL);
-    xTaskCreate(osc_task, "OSC", 2048, NULL, 4, &OSC_TASK);
+    xTaskCreate(keypad_task, "KEYPAD", 1024, NULL, 2, NULL);
+    xTaskCreate(gui_task, "GUI", 10240, NULL, 3, NULL); // &OSC_TASK);
 }
 
 void loop() {

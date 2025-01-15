@@ -148,6 +148,9 @@ typedef struct __attribute__((packed)) {
 
 #define SEQ_FEAT_DISABLE 0xffffffff
 
+#define NOTE_CUT 14
+#define NOTE_END 13
+
 typedef struct {
     uint8_t note = NO_NOTE;
 	uint8_t octave = NO_OCT;
@@ -223,6 +226,7 @@ public:
     void read_dpcm_data();
 
     unpk_item_t get_pt_item(uint8_t c, uint8_t i, uint32_t r);
+    uint8_t get_frame_map(int f, int c);
     void print_frame_data(int index);
     uint8_t ch_fx_count(int n);
     void read_ftm_all();
