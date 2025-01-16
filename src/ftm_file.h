@@ -78,7 +78,7 @@ typedef struct __attribute__((packed)) {
     char id[16] = "FRAMES";
     uint32_t version = 3;
     uint32_t size;
-    uint32_t frame_num;
+    uint32_t frame_num = 1;
     uint32_t speed = 3;
     uint32_t tempo = 150;
     uint32_t pat_length = 64;
@@ -112,13 +112,13 @@ typedef struct {
 } seq_index_t;
 
 typedef struct __attribute__((packed)) {
-    uint32_t index;
-    uint8_t type;
-    uint32_t seq_count;
-    seq_index_t seq_index[5];
+    uint32_t index = 0;
+    uint8_t type = 0;
+    uint32_t seq_count = 5;
+    seq_index_t seq_index[5] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
     dpcm_t dpcm[96];
-    uint32_t name_len;
-    char name[64];
+    uint32_t name_len = 14;
+    char name[64] = "New Instrument";
 } instrument_t;
 
 typedef struct __attribute__((packed)) {
@@ -171,8 +171,44 @@ const char note2str[15][3] = {
     "--", "C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-", "==", "--"
 };
 
+const char fx2char[32] = {
+    '.',
+    'F',
+    'B',
+    'D',
+    'C',
+    'E',
+    '3',
+    'U',
+    'H',
+    'I',
+    '0',
+    '4',
+    '7',
+    'P',
+    'G',
+    'Z',
+    '1',
+    '2',
+    'V',
+    'Y',
+    'Q',
+    'R',
+    'A',
+    'S',
+    'X',
+    'U',
+    'U',
+    'U',
+    'J',
+    'W'
+};
+
 #define HEX_B1(n) (n >> 4)
 #define HEX_B2(n) (n & 0xf)
+
+#define SET_HEX_B1(a, b) ((a & 0x0F) | (b << 4))
+#define SET_HEX_B2(a, b) ((a & 0xF0) | b)
 
 class FTM_FILE {
 public:
@@ -203,6 +239,8 @@ public:
 
     std::vector<dpcm_sample_t> dpcm_samples;
 
+    void create_new_inst();
+
     int open_ftm(const char *filename);
 
     void read_param_block();
@@ -226,6 +264,7 @@ public:
     void read_dpcm_data();
 
     unpk_item_t get_pt_item(uint8_t c, uint8_t i, uint32_t r);
+    void set_pt_item(uint8_t c, uint8_t i, uint32_t r, unpk_item_t item);
     uint8_t get_frame_map(int f, int c);
     void print_frame_data(int index);
     uint8_t ch_fx_count(int n);

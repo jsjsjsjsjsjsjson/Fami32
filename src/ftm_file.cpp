@@ -4,10 +4,17 @@ extern int errno;
 FTM_FILE::FTM_FILE() {
     patterns.resize(pr_block.channel);
     unpack_pt.resize(pr_block.channel);
+
     for (int c = 0; c < pr_block.channel; c++) {
         unpack_pt[c].resize(1);
         unpack_pt[c][0].resize(fr_block.pat_length);
     }
+
+    create_new_inst();
+}
+
+void FTM_FILE::create_new_inst() {
+    instrument.emplace_back();
 }
 
 int FTM_FILE::open_ftm(const char *filename) {
@@ -300,42 +307,17 @@ unpk_item_t FTM_FILE::get_pt_item(uint8_t c, uint8_t i, uint32_t r) {
     return unpack_pt[c][i][r];
 }
 
-void FTM_FILE::print_frame_data(int index) {
-    printf("FRAME #%02X: ", index);
-    for (int c = 0; c < pr_block.channel; c++) {
-        printf("%02X ", frames[index][c]);
+void FTM_FILE::set_pt_item(uint8_t c, uint8_t i, uint32_t r, unpk_item_t item) {
+    if (c >= unpack_pt.size()) {
+        unpack_pt.resize(c + 1);
     }
-    printf("\n");
-    for (int y = 0; y < fr_block.pat_length; y++) {
-        printf("#%02X| ", y);
-        for (int x = 0; x < pr_block.channel; x++) {
-            unpk_item_t pt_tmp = get_pt_item(x, frames[index][x], y);
-            if (pt_tmp.note != NO_NOTE) {
-                printf("%s%d ", note2str[pt_tmp.note], pt_tmp.octave);
-            } else {
-                printf("... ");
-            }
-            if (pt_tmp.instrument != NO_INST) {
-                printf("%02X ", pt_tmp.instrument);
-            } else {
-                printf(".. ");
-            }
-            if (pt_tmp.volume != NO_VOL) {
-                printf("%X ", pt_tmp.volume);
-            } else {
-                printf(". ");
-            }
-            for (uint8_t fx = 0; fx < he_block.ch_fx[x] + 1; fx++) {
-                if (pt_tmp.fxdata[fx].fx_cmd) {
-                    printf("%02X%02X ", pt_tmp.fxdata[fx].fx_cmd, pt_tmp.fxdata[fx].fx_var);
-                } else {
-                    printf(".... ");
-                }
-            }
-            printf("| ");
-        }
-        printf("\n");
+    if (i >= unpack_pt[c].size()) {
+        unpack_pt[c].resize(i + 1);
     }
+    if (r >= unpack_pt[c][i].size()) {
+        unpack_pt[c][i].resize(r + 1);
+    }
+    unpack_pt[c][i][r] = item;
 }
 
 void FTM_FILE::read_dpcm_block() {
@@ -373,6 +355,44 @@ void FTM_FILE::read_dpcm_data() {
         fseek(ftm_file, 1, SEEK_CUR);
         // printf("FTELL: %d\n", ftell(ftm_file));
         printf("SECCESS.\n");
+    }
+}
+
+void FTM_FILE::print_frame_data(int index) {
+    printf("FRAME #%02X: ", index);
+    for (int c = 0; c < pr_block.channel; c++) {
+        printf("%02X ", frames[index][c]);
+    }
+    printf("\n");
+    for (int y = 0; y < fr_block.pat_length; y++) {
+        printf("#%02X| ", y);
+        for (int x = 0; x < pr_block.channel; x++) {
+            unpk_item_t pt_tmp = get_pt_item(x, frames[index][x], y);
+            if (pt_tmp.note != NO_NOTE) {
+                printf("%s%d ", note2str[pt_tmp.note], pt_tmp.octave);
+            } else {
+                printf("... ");
+            }
+            if (pt_tmp.instrument != NO_INST) {
+                printf("%02X ", pt_tmp.instrument);
+            } else {
+                printf(".. ");
+            }
+            if (pt_tmp.volume != NO_VOL) {
+                printf("%X ", pt_tmp.volume);
+            } else {
+                printf(". ");
+            }
+            for (uint8_t fx = 0; fx < he_block.ch_fx[x] + 1; fx++) {
+                if (pt_tmp.fxdata[fx].fx_cmd) {
+                    printf("%02X%02X ", pt_tmp.fxdata[fx].fx_cmd, pt_tmp.fxdata[fx].fx_var);
+                } else {
+                    printf(".... ");
+                }
+            }
+            printf("| ");
+        }
+        printf("\n");
     }
 }
 

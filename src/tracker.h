@@ -49,6 +49,7 @@ public:
         memset(status, 0, sizeof(pos));
         ftm_data = data;
         instrument = &ftm_data->instrument[0];
+        set_inst(0);
         DBG_PRINTF("INIT FTM_FILE IN %p\n", ftm_data);
     }
 
@@ -235,8 +236,10 @@ public:
 
         if (mode < TRIANGULAR) {
             mode = PULSE_125;
+            chl_mode = mode;
         } else if (mode > DPCM_SAMPLE) {
             mode = NOISE0;
+            chl_mode = mode;
         }
 
         slide_up = 0;
@@ -272,6 +275,15 @@ public:
         arp_fx_n2 = 0;
 
         arp_fx_pos = 0;
+
+        sample_pos = 0;
+        sample_fpos = 0;
+        sample_var = 0;
+        sample_num = 0;
+        sample_start = 0;
+        sample_status = 0;
+        sample_len = 0;
+        sample_pitch = 0;
     }
 
     void init(FTM_FILE* data) {
@@ -791,6 +803,9 @@ public:
 
         buf.resize(channel[0].get_buf_size());
 
+        set_speed(ftm_data->fr_block.speed);
+        set_tempo(ftm_data->fr_block.tempo);
+
         lpf.setCutoffFrequency(18000, SAMP_RATE);
         hpf.setCutoffFrequency(32, SAMP_RATE);
     }
@@ -817,11 +832,11 @@ public:
     void stop_play() {
         play_status = false;
         for (int c = 0; c < 5; c++) {
-            channel[c].clear_all_fx_flag();
             channel[c].note_cut();
+            channel[c].clear_all_fx_flag();
             memset(channel[c].get_buf(), 0, channel[c].get_buf_size_byte());
         }
-        memset(buf.data(), 0, get_buf_size_byte());
+        // memset(buf.data(), 0, get_buf_size_byte());
     }
 
     void set_speed(int speed_ref) {
@@ -981,6 +996,7 @@ public:
     void process_tick() {
         // printf("PROCESS TICK, STATUS -> %d\n", play_status);
         if (!play_status) {
+            mix_all_channel();
             return;
         }
         for (int c = 0; c < 5; c++) {
@@ -1047,6 +1063,10 @@ public:
 
     int get_row() {
         return row;
+    }
+
+    void set_row(int r) {
+        row = r % ftm_data->fr_block.pat_length;
     }
 
     int get_frame() {

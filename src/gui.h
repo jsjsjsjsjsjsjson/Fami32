@@ -7,17 +7,57 @@
 #include "fonts/rismol_3_4.h"
 #include "fonts/rismol_3_5.h"
 #include "fonts/3x5font.h"
+#include "fonts/font5x7.h"
+#include "fonts/font4x6.h"
 
 #include <dirent.h>
-
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 32
 
 extern FAMI_PLAYER player;
 extern Adafruit_SSD1306 display;
 extern Adafruit_Keypad keypad;
+extern MPR121_Keypad touchKeypad;
 
-int main_menu_pos = 0;
+extern TaskHandle_t SOUND_TASK_HD;
+extern bool sound_task_stat;
+extern i2s_chan_handle_t tx_handle;
+
+static uint8_t main_menu_pos = 0;
+
+static uint8_t channel_sel_pos = 0;
+static uint8_t inst_sel_pos = 0;
+
+uint8_t g_octv = 3;
+
+bool touch_note = true;
+
+bool edit_mode = false;
+
+const char ch_name[5][10] = {
+    "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"
+};
+
+void set_channel_sel_pos(uint8_t p) {
+    if (p > 4) {
+        p = 0;
+    }
+    channel_sel_pos = p;
+    if (edit_mode)
+        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+}
+
+void change_edit_mode() {
+    edit_mode = !edit_mode;
+    if (edit_mode)
+        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+}
+
+void invertRect(int x, int y, int w, int h) {
+    for (int i = x; i < x + w; i++) {
+        for (int j = y; j < y + h; j++) {
+            display.drawPixel(i, j, !display.getPixel(i, j));
+        }
+    }
+}
 
 void drawChessboard(int x, int y, int w, int h) {
     for (int row = 0; row < h; row++) {
@@ -25,6 +65,25 @@ void drawChessboard(int x, int y, int w, int h) {
             display.drawPixel(x + col, y + row, (row + col) & 1);
         }
     }
+}
+
+void pause_sound() {
+    player.stop_play();
+    size_t writed;
+    int timer = 0;
+    while (sound_task_stat) {
+        timer++;
+        if (timer > 250) {
+            break;
+        }
+        vTaskDelay(1);
+    }
+    memset(player.get_buf(), 0, player.get_buf_size_byte());
+    i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+}
+
+void start_sound() {
+    player.start_play();
 }
 
 void drawPopupBox(const char* message, uint16_t width, uint16_t height, uint16_t x, uint16_t y) {
@@ -71,19 +130,19 @@ void drawPopupBox(const char* message, uint16_t width, uint16_t height, uint16_t
             if (len > textWidth) textWidth = len;
         }
         width = textWidth * 6 + 4;
-        if (width > SCREEN_WIDTH - 20) width = SCREEN_WIDTH - 20;
+        if (width > 128 - 20) width = 128 - 20;
     }
 
     if (height == 0) {
         height = numLines * textHeight + 4;
-        if (height > SCREEN_HEIGHT - 20) height = SCREEN_HEIGHT - 20;
+        if (height > 64 - 20) height = 64 - 20;
     }
 
     if (x == 0) {
-        x = (SCREEN_WIDTH - width) / 2;
+        x = (128 - width) / 2;
     }
     if (y == 0) {
-        y = (SCREEN_HEIGHT - height) / 2;
+        y = (64 - height) / 2;
     }
 
     display.fillRect(x, y, width, height, 0);
@@ -289,13 +348,13 @@ const char* file_sel(const char *basepath) {
     }
 }
 
-int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), uint16_t width, uint16_t height, uint16_t x, uint16_t y) {
+int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), uint16_t width, uint16_t height, uint16_t x, uint16_t y, int8_t initPos) {
     if (x == 0) x = (128 - width) / 2;
     if (y == 0) y = (64 - height) / 2;
 
     display.setTextColor(SSD1306_WHITE);
 
-    int8_t menuPos = 0;
+    int8_t menuPos = initPos;
     int8_t pageStart = 0;
     const uint8_t itemsPerPage = (height - 10) / 8;
 
@@ -376,13 +435,15 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
 
 void menu_navi() {
     drawChessboard(0, 0, 128, 64);
-    const char *menu_str[5] = {"MAIN", "FRAME", "CHANNEL", "INSTRUMENT", "OSC"};
-    printf("MENU RETURN: %d\n", menu("MENU", menu_str, 5, NULL, 64, 45, 0, 0));
+    const char *menu_str[5] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "OSC"};
+    int ret = menu("MENU", menu_str, 5, NULL, 64, 45, 0, 0, main_menu_pos);
+    if (ret != -1)
+        main_menu_pos = ret;
 }
 
 void open_file_page() {
+    pause_sound();
     const char* file = file_sel("/flash");
-    player.stop_play();
     drawPopupBox("READING...", 0, 0, 0, 0);
     vTaskDelay(16);
     ftm.open_ftm(file);
@@ -390,10 +451,18 @@ void open_file_page() {
     player.reload();
 }
 
+void channel_sel_page() {
+    drawChessboard(0, 0, 128, 64);
+    const char *menu_str[5] = {"PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"};
+    int ret = menu("CHANNEL", menu_str, 5, NULL, 64, 53, 0, 0, channel_sel_pos);
+    if (ret != -1)
+        set_channel_sel_pos(ret);
+}
+
 void menu_file() {
     drawChessboard(0, 0, 128, 64);
     const char *menu_str[3] = {"OPEN", "SAVE", "RECORD"};
-    int ret = menu("FILE", menu_str, 3, NULL, 64, 37, 0, 0);
+    int ret = menu("FILE", menu_str, 3, NULL, 64, 37, 0, 0, 0);
     switch (ret)
     {
     case 0:
@@ -402,6 +471,26 @@ void menu_file() {
     
     default:
         break;
+    }
+}
+
+void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
+    if (e.bit.EVENT == KEY_JUST_PRESSED) {
+        if (e.bit.KEY > 13) {
+            *note = e.bit.KEY - 1;
+            *octv = 0;
+        } else {
+            *note = (e.bit.KEY % 12) + 1;
+            *octv = g_octv + (e.bit.KEY / 12);
+            if (touch_note) {
+                player.channel[channel_sel_pos].set_note(item2note(*note, *octv));
+                player.channel[channel_sel_pos].note_start();
+            }
+        }
+    } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
+        if (touch_note) {
+            player.channel[channel_sel_pos].note_end();
+        }
     }
 }
 
@@ -440,9 +529,13 @@ void tracker_menu() {
                         if (pt_tmp.note == NOTE_CUT)
                             display.printf("--- ");
                         else if (pt_tmp.note == NOTE_END)
-                            display.printf("===");
-                        else
-                            display.printf("%s%d ", note2str[pt_tmp.note], pt_tmp.octave);
+                            display.printf("=== ");
+                        else {
+                            if (i == 3)
+                                display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));
+                            else
+                                display.printf("%s%d ", note2str[pt_tmp.note], pt_tmp.octave);
+                        }
                     } else {
                         display.printf("... ");
                     }
@@ -458,8 +551,33 @@ void tracker_menu() {
         display.drawFastVLine(7, 0, 64, 1);
         for (int i = 0; i < 5; i++) {
             display.drawFastVLine((i * 24) + 31, 0, 64, 1);
+            if (i == channel_sel_pos) {
+                display.setCursor((i * 24) + 9, 0);
+                display.print(">");
+                if (edit_mode) {
+                    invertRect((i * 24) + 8, 0, 23, 6);
+                }
+            }
         }
         display.display();
+
+        if (touchKeypad.available()) {
+            uint8_t note_set = 0;
+            uint8_t octv_set = 0;
+            touchKeypadEvent e = touchKeypad.read();
+
+            update_touchpad_note(&note_set, &octv_set, e);
+            if (note_set) {
+                printf("INPUT_NOTE_SET: %d\n", note_set);
+                if (edit_mode) {
+                    unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
+                    pt_tmp.note = note_set;
+                    pt_tmp.octave = octv_set;
+                    ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                    player.set_row(player.get_row() + 1);
+                }
+            }
+        }
 
         // KEYPAD
         if (keypad.available()) {
@@ -467,26 +585,347 @@ void tracker_menu() {
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
                 if (e.bit.KEY == KEY_OK) {
                     if (player.get_play_status()) {
-                        player.stop_play();
+                        pause_sound();
                     } else {
-                        player.start_play();
+                        start_sound();
                     }
+                } else if (e.bit.KEY == KEY_BACK) {
+                    edit_mode = !edit_mode;
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
+                    break;
                 } else if (e.bit.KEY == KEY_MENU) {
                     menu_file();
+                } else if (e.bit.KEY == KEY_P) {
+                    player.jmp_to_frame(player.get_frame() + 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_S) {
+                    player.jmp_to_frame(player.get_frame() - 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_UP) {
+                    player.set_row(player.get_row() - 1);
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_L) {
+                    set_channel_sel_pos(channel_sel_pos - 1);
+                } else if (e.bit.KEY == KEY_R) {
+                    set_channel_sel_pos(channel_sel_pos + 1);
                 }
+                channel_sel_pos %= 5;
             }
         }
         vTaskDelay(2);
     }
 }
 
-void channel_memu() {
+void channel_menu() {
+    static uint8_t x_pos = 0;
+    display.setFont(&font3x5);
+    for (;;) {
+        display.clearDisplay();
 
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setTextColor(0);
+        display.setFont(&font5x7);
+        display.setCursor(1, 1);
+        display.printf("%s ", ch_name[channel_sel_pos]);
+        display.setFont(&font4x6);
+        display.printf("(CHAN%d)", channel_sel_pos);
+
+        display.setFont(&rismol35);
+        display.setTextColor(1);
+
+        display.setCursor(0, 11);
+        display.drawFastHLine(0, 10, 128, 1);
+        display.drawFastHLine(0, 9, player.channel[channel_sel_pos].get_rel_vol() / 2, 1);
+
+        for (int r = -4; r < 5; r++) {
+            if (r) {
+                display.setTextColor(1);
+            } else {
+                display.fillRect(0, 34, 59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 7, 1);
+                display.setTextColor(0);
+            }
+            if (((player.get_row() + r) >= 0) && ((player.get_row() + r) < ftm.fr_block.pat_length)) {
+                display.printf("%02X ", player.get_row() + r);
+                display.setCursor(display.getCursorX() - 2, display.getCursorY());
+
+                unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row() + r);
+                if (pt_tmp.note != NO_NOTE) {
+                    if (pt_tmp.note == NOTE_CUT)
+                        display.printf("--- ");
+                    else if (pt_tmp.note == NOTE_END)
+                        display.printf("=== ");
+                    else {
+                        if (channel_sel_pos == 3)
+                            display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));
+                        else
+                            display.printf("%s%d ", note2str[pt_tmp.note], pt_tmp.octave);
+                    }
+                } else {
+                    display.printf("... ");
+                }
+                if (pt_tmp.instrument != NO_INST) {
+                    display.printf("%02X ", pt_tmp.instrument);
+                } else {
+                    display.printf(".. ");
+                }
+                if (pt_tmp.volume != NO_VOL) {
+                    display.printf("%X", pt_tmp.volume);
+                } else {
+                    display.printf(".");
+                }
+                for (uint8_t fx = 0; fx < ftm.he_block.ch_fx[channel_sel_pos] + 1; fx++) {
+                    if (pt_tmp.fxdata[fx].fx_cmd) {
+                        display.printf(" %c%02X", fx2char[pt_tmp.fxdata[fx].fx_cmd], pt_tmp.fxdata[fx].fx_var);
+                    } else {
+                        display.printf(" ...");
+                    }
+                }
+            }
+            display.printf("\n");
+        }
+        display.drawFastVLine(8, 11, 53, 1);
+        // display.drawFastVLine(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 53, 1);
+        if (ftm.he_block.ch_fx[channel_sel_pos] < 3)
+            display.fillRect(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 106 - (59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16)), 53, 1);
+        else
+            display.drawFastVLine(106, 11, 53, 1);
+
+        if (x_pos < 4) {
+            if (x_pos == 0) {
+                invertRect(9, 33, 13, 9);
+            } else if (x_pos == 1) {
+                invertRect(25, 33, 5, 9);
+            } else if (x_pos == 2) {
+                invertRect(29, 33, 5, 9);
+            } else if (x_pos == 3) {
+                invertRect(37, 33, 5, 9);
+            }
+        } else {
+            int x = ((x_pos - 1) * 4) + (((x_pos - 1) / 3) * 4) + 29;
+            invertRect(x, 33, 5, 9);
+        }
+
+        display.display();
+
+        uint8_t note_set = 0;
+        uint8_t octv_set = 0;
+
+        if (edit_mode) {
+            if (touchKeypad.available()) {
+                touchKeypadEvent e = touchKeypad.read();
+                if (x_pos == 0) {
+                    update_touchpad_note(&note_set, &octv_set, e);
+                    if (note_set) {
+                        printf("INPUT_NOTE_SET: %d\n", note_set);
+                        unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
+                        pt_tmp.note = note_set;
+                        pt_tmp.octave = octv_set;
+                        pt_tmp.instrument = inst_sel_pos;
+                        ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                        player.set_row(player.get_row() + 1);
+                    }
+                } else if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                    unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
+                    if (x_pos == 1) {
+                        pt_tmp.instrument = SET_HEX_B1(pt_tmp.instrument, e.bit.KEY);
+                    } else if (x_pos == 2) {
+                        pt_tmp.instrument = SET_HEX_B2(pt_tmp.instrument, e.bit.KEY);
+                    } else if (x_pos == 3) {
+                        pt_tmp.volume = e.bit.KEY;
+                    } else if (x_pos >= 4) {
+                        if (((x_pos - 4) % 3) == 1)
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B1(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, e.bit.KEY);
+                        else if (((x_pos - 4) % 3) == 2)
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B2(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, e.bit.KEY);
+                        else
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = e.bit.KEY;
+                    }
+                    ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                }
+            }
+        } else {
+            if (touchKeypad.available()) {
+                touchKeypadEvent e = touchKeypad.read();
+                update_touchpad_note(&note_set, &octv_set, e);
+            }
+        }
+
+        // KEYPAD
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (player.get_play_status()) {
+                        pause_sound();
+                    } else {
+                        start_sound();
+                    }
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    menu_navi();
+                    break;
+                } else if (e.bit.KEY == KEY_MENU) {
+                    channel_sel_page();
+                } else if (e.bit.KEY == KEY_P) {
+                    player.jmp_to_frame(player.get_frame() + 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_S) {
+                    player.jmp_to_frame(player.get_frame() - 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_UP) {
+                    player.set_row(player.get_row() - 1);
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_L) {
+                    x_pos--;
+                } else if (e.bit.KEY == KEY_R) {
+                    x_pos++;
+                }
+                x_pos %= 4 + (ftm.ch_fx_count(channel_sel_pos) * 3);
+            }
+        }
+
+        vTaskDelay(2);
+    }
+}
+
+void frames_menu() {
+    for (;;) {
+        display.clearDisplay();
+
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setTextColor(0);
+        display.setFont(&font5x7);
+        display.setCursor(1, 1);
+        display.printf("FRAMES ");
+        display.setFont(&font4x6);
+        display.printf("(%02X/%02X)", player.get_frame(), ftm.fr_block.frame_num - 1);
+
+        int tol_vol = 0;
+        for (int i = 0; i < 5; i++) {
+            tol_vol += player.channel[i].get_rel_vol();
+        }
+        display.drawFastHLine(0, 9, tol_vol / 8, 1);
+
+        display.setFont(&font5x7);
+        display.setCursor(1, 12);
+        for (int f = -2; f < 3; f++) {
+            if (f) {
+                display.setTextColor(1);
+            } else {
+                display.setTextColor(0);
+                display.fillRect(0, display.getCursorY() - 2, 90, 11, 1);
+            }
+
+            if (((player.get_frame() + f) >= 0) && ((player.get_frame() + f) < ftm.fr_block.frame_num)) {
+                display.setFont(&font4x6);
+                display.printf("%02X", player.get_frame() + f);
+                display.setCursor(display.getCursorX() + 3, display.getCursorY());
+                display.setFont(&font5x7);
+                for (int c = 0; c < 5; c++) {
+                    display.printf("%02X", ftm.get_frame_map(player.get_frame() + f, c));
+                    display.setCursor(display.getCursorX() + 3, display.getCursorY());
+                }
+            }
+            display.printf("\n");
+            display.setCursor(display.getCursorX() + 1, display.getCursorY() + 3);
+        }
+
+        display.drawFastHLine(0, 10, 128, 1);
+        display.drawFastVLine(12, 11, 53, 1);
+        display.drawFastVLine(90, 10, 54, 1);
+        display.drawFastVLine(91, 10, 54, 1);
+        display.drawFastVLine(92, 10, 54, 1);
+
+        invertRect(15 + (channel_sel_pos * 15), 33, 13, 9);
+
+        display.setFont(&rismol35);
+
+        display.setCursor(95, 11);
+
+        for (int r = 0; r < 9; r++) {
+            if (r == (player.get_row() % 9)) {
+                display.fillRect(93, 10 + (r * 6), 35, 7, 1);
+                display.setTextColor(0);
+            } else {
+                display.setTextColor(1);
+            }
+            unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos),
+                                                r + ((player.get_row() / 9) * 9));
+            if (pt_tmp.note != NO_NOTE) {
+                if (pt_tmp.note == NOTE_CUT)
+                    display.printf("--- ");
+                else if (pt_tmp.note == NOTE_END)
+                    display.printf("=== ");
+                else {
+                    if (channel_sel_pos == 3)
+                        display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));
+                    else
+                        display.printf("%s%d ", note2str[pt_tmp.note], pt_tmp.octave);
+                }
+            } else {
+                display.printf("... ");
+            }
+            if (pt_tmp.instrument != NO_INST) {
+                display.printf("%02X ", pt_tmp.instrument);
+            } else {
+                display.printf(".. ");
+            }
+            if (pt_tmp.volume != NO_VOL) {
+                display.printf("%X", pt_tmp.volume);
+            } else {
+                display.printf(".");
+            }
+            display.printf("\n");
+            display.setCursor(95, display.getCursorY());
+        }
+
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (player.get_play_status()) {
+                        pause_sound();
+                    } else {
+                        start_sound();
+                    }
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    menu_navi();
+                    break;
+                } else if (e.bit.KEY == KEY_MENU) {
+                    // channel_sel_page();
+                } else if (e.bit.KEY == KEY_P) {
+                    // player.jmp_to_frame(player.get_frame() + 1);
+                    // player.set_row(player.get_row() + 1);
+                    ftm.frames[player.get_frame()][channel_sel_pos]++;
+                } else if (e.bit.KEY == KEY_S) {
+                    // player.jmp_to_frame(player.get_frame() - 1);
+                    // player.set_row(player.get_row() + 1);
+                    ftm.frames[player.get_frame()][channel_sel_pos]--;
+                } else if (e.bit.KEY == KEY_UP) {
+                    player.jmp_to_frame(player.get_frame() - 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    player.jmp_to_frame(player.get_frame() + 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_L) {
+                    channel_sel_pos--;
+                } else if (e.bit.KEY == KEY_R) {
+                    channel_sel_pos++;
+                }
+                channel_sel_pos %= 5;
+            }
+        }
+
+        vTaskDelay(4);
+    }
 }
 
 void gui_task(void *arg) {
+    player.channel[channel_sel_pos].set_inst(inst_sel_pos);
     for(;;) {
         switch (main_menu_pos)
         {
@@ -495,6 +934,12 @@ void gui_task(void *arg) {
             break;
 
         case 1:
+            channel_menu();
+            break;
+
+        case 2:
+            frames_menu();
+            break;
         
         default:
             break;

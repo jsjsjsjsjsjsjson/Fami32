@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_Keypad.h>
+#include <MPR121_Keypad.h>
 // #include <esp_littlefs.h>
 #include <esp_vfs_fat.h>
 #include <driver/i2s_std.h>
@@ -16,6 +17,7 @@ extern "C" {
 }
 
 FAMI_PLAYER player;
+i2s_chan_handle_t tx_handle;
 
 TaskHandle_t SOUND_TASK_HD = NULL;
 
@@ -25,6 +27,8 @@ Adafruit_Keypad keypad = Adafruit_Keypad(makeKeymap(KEYPAD_MAP),
                                         (byte[KEYPAD_ROWS]){KEYPAD_R0, KEYPAD_R1, KEYPAD_R2, KEYPAD_R3},
                                         (byte[KEYPAD_COLS]){KEYPAD_C0, KEYPAD_C1, KEYPAD_C2},
                                         KEYPAD_ROWS, KEYPAD_COLS);
+
+MPR121_Keypad touchKeypad(TOUCHPAD0_ADDRS, TOUCHPAD1_ADDRS);
 
 void open_ftm_cmd(int argc, const char* argv[]) {
     if (argc < 2) {
@@ -57,10 +61,11 @@ void serial_audio(int16_t *buf, size_t samp) {
     }
 }
 
+bool sound_task_stat;
+
 void sound_task(void *arg) {
     player.init(&ftm);
 
-    i2s_chan_handle_t tx_handle;
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     i2s_new_channel(&chan_cfg, &tx_handle, NULL);
     i2s_std_config_t std_cfg = {
@@ -86,8 +91,10 @@ void sound_task(void *arg) {
     size_t writed;
 
     for (;;) {
+        sound_task_stat = true;
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+        sound_task_stat = false;
         // serial_audio(player.get_buf(), player.get_buf_size());
         vTaskDelay(1);
     }
@@ -160,8 +167,10 @@ void shell(void *arg) {
 
 void keypad_task(void *arg) {
     keypad.begin();
+    touchKeypad.begin();
     for (;;) {
         keypad.tick();
+        touchKeypad.tick();
         vTaskDelay(4);
     }
 }
@@ -180,7 +189,7 @@ void setup() {
     vTaskDelay(64);
     xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 5, &SOUND_TASK_HD);
-    xTaskCreate(keypad_task, "KEYPAD", 1024, NULL, 2, NULL);
+    xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 2, NULL);
     xTaskCreate(gui_task, "GUI", 10240, NULL, 3, NULL); // &OSC_TASK);
 }
 
