@@ -10,6 +10,8 @@
 #include "fonts/font5x7.h"
 #include "fonts/font4x6.h"
 
+#include <fami32_icon.h>
+
 #include <dirent.h>
 
 extern FAMI_PLAYER player;
@@ -24,7 +26,7 @@ extern i2s_chan_handle_t tx_handle;
 static uint8_t main_menu_pos = 0;
 
 static int8_t channel_sel_pos = 0;
-static uint8_t inst_sel_pos = 0;
+static int16_t inst_sel_pos = 0;
 
 uint8_t g_octv = 3;
 
@@ -557,6 +559,7 @@ void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
             *note = (e.bit.KEY % 12) + 1;
             *octv = g_octv + (e.bit.KEY / 12);
             if (touch_note) {
+                player.channel[channel_sel_pos].set_inst(inst_sel_pos);
                 player.channel[channel_sel_pos].set_note(item2note(*note, *octv));
                 player.channel[channel_sel_pos].note_start();
             }
@@ -596,7 +599,7 @@ void main_option_page() {
     drawPinstript(0, 0, 128, 64);
     const char *menu_str[5] = {edit_mode ? "STOP EDIT" : "START EDIT", 
                                 player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
-                                "CHANNEL >", "FILE", "SETTINGS"};
+                                "CHANNEL", "FILE", "SETTINGS"};
     int ret = menu("OPTION", menu_str, 5, NULL, 64, 45, 0, 0, 0);
     switch (ret)
     {
@@ -1109,6 +1112,112 @@ void frames_menu() {
     }
 }
 
+void instrument_menu() {
+    int pageStart = 0;
+    const int itemsPerPage = 6;
+    for (;;) {
+        display.clearDisplay();
+
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setTextColor(0);
+        display.setFont(&font5x7);
+        display.setCursor(1, 1);
+        display.printf("INSTRUMENT ");
+        display.setFont(&font4x6);
+        display.printf("(%02X/%02X)", inst_sel_pos, ftm.inst_block.inst_num - 1);
+
+        display.drawFastHLine(0, 9, player.channel[channel_sel_pos].get_rel_vol() / 2, 1);
+
+        display.setFont(&rismol35);
+        display.setTextColor(1);
+
+        if (inst_sel_pos < pageStart) {
+            pageStart = inst_sel_pos;
+        } else if (inst_sel_pos >= pageStart + itemsPerPage) {
+            pageStart = inst_sel_pos - itemsPerPage + 1;
+        }
+        int pageEnd = (pageStart + itemsPerPage >= ftm.inst_block.inst_num) ? ftm.inst_block.inst_num : pageStart + itemsPerPage;
+
+        for (uint8_t i = pageStart; i < pageEnd; i++) {
+            int displayIndex = i - pageStart;
+            int itemYPos = 9 + (displayIndex * 8);
+
+            if (i == inst_sel_pos) {
+                display.fillRect(0, itemYPos + 1, 128, 7, 1);
+                display.setTextColor(0);
+                display.setCursor(2, itemYPos + 2);
+            } else {
+                display.setTextColor(1);
+                display.setCursor(2, itemYPos + 2);
+            }
+
+            if (ftm.get_inst(i)->name_len > 18) {
+                display.printf("%02X>%.15s...", ftm.get_inst(i)->index, ftm.get_inst(i)->name);
+            } else {
+                display.printf("%02X>%s", ftm.get_inst(i)->index, ftm.get_inst(i)->name);
+            }
+
+            for (int f = 0; f < 5; f++) {
+                if (i == inst_sel_pos)
+                    display.drawBitmap(88 + (f * 8), itemYPos + 1, fami32_icon[f], 7, 7, !ftm.get_inst(i)->seq_index[f].enable);
+                else
+                    display.drawBitmap(88 + (f * 8), itemYPos + 1, fami32_icon[f], 7, 7, ftm.get_inst(i)->seq_index[f].enable);
+            }
+        }
+        display.setTextColor(1);
+
+        display.drawFastVLine(86, 10, 47, 1);
+        display.drawFastHLine(0, 57, 128, 1);
+
+        display.drawFastVLine(63, 58, 6, 1);
+        display.setCursor(0, 59);
+        display.printf("CH%d: %.10s", channel_sel_pos, player.channel[channel_sel_pos].get_inst()->name);
+
+        if (channel_sel_pos == 3)
+            display.drawFastVLine(63 + (player.channel[3].get_noise_rate() * 4), 58, 6, 1);
+        else if (channel_sel_pos == 4) 
+            display.drawFastVLine(63 + (player.channel[4].get_samp_pos() * (64.0f / (float)player.channel[4].get_samp_len())), 58, 6, 1);
+        else
+            display.drawFastVLine(63 + (64 - (player.channel[channel_sel_pos].get_period() / 32)), 58, 6, 1);
+
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    // OK
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    menu_navi();
+                    break;
+                } else if (e.bit.KEY == KEY_BACK) {
+                    // BACK
+                } else if (e.bit.KEY == KEY_UP) {
+                    inst_sel_pos--;
+                    if (inst_sel_pos < 0) {
+                        inst_sel_pos = ftm.inst_block.inst_num - 1;
+                        pageStart = (ftm.inst_block.inst_num / itemsPerPage) * itemsPerPage;
+                    }
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    inst_sel_pos++;
+                    if (inst_sel_pos >= ftm.inst_block.inst_num) {
+                        inst_sel_pos = 0;
+                        pageStart = 0;
+                    }
+                }
+            }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
+        }
+
+        vTaskDelay(4);
+    }
+}
+
 void gui_task(void *arg) {
     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
     for(;;) {
@@ -1124,6 +1233,10 @@ void gui_task(void *arg) {
 
         case 2:
             frames_menu();
+            break;
+
+        case 3:
+            instrument_menu();
             break;
         
         default:

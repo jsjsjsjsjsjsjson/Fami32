@@ -51,8 +51,8 @@ void FTM_FILE::new_ftm() {
 }
 
 void FTM_FILE::create_new_inst() {
-    inst_block.inst_num++;
     instrument.emplace_back();
+    inst_block.inst_num = instrument.size();
 }
 
 int FTM_FILE::open_ftm(const char *filename) {
@@ -166,6 +166,7 @@ void FTM_FILE::read_instrument_data() {
         printf("DTY: %d %d\n", inst_tmp.seq_index[4].enable, inst_tmp.seq_index[4].seq_index);
         printf("\n");
     }
+    inst_block.inst_num = instrument.size();
 }
 
 void FTM_FILE::read_sequences_block() {

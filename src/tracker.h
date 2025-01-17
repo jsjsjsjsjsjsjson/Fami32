@@ -110,15 +110,19 @@ public:
                     continue;
                 }
                 pos[i]++;
-                if (status[i] == SEQU_RELEASE) {
+                if (status[i] == SEQU_PLAYING) {
+                    if (sequ->release != SEQ_FEAT_DISABLE) {
+                        if (pos[i] > sequ->release) {
+                            pos[i]--;
+                        }
+                    }
+                } else {
                     if (sequ->release == SEQ_FEAT_DISABLE) {
                         status[i] = SEQU_STOP;
                         if (i == 0) {
                             var[0] = 0;
                             continue;
                         }
-                    } else if (pos[i] > sequ->release) {
-                        pos[i]--;
                     }
                 }
                 if (pos[i] >= sequ->length) {
@@ -580,6 +584,10 @@ public:
         inst_proc.set_inst(n);
     }
 
+    instrument_t *get_inst() {
+        return inst_proc.get_inst();
+    }
+
     void note_start() {
         if (mode == DPCM_SAMPLE) {
             sample_fpos = 0;
@@ -776,6 +784,14 @@ public:
 
     size_t get_buf_size() {
         return tick_buf.size();
+    }
+
+    int get_samp_pos() {
+        return sample_pos;
+    }
+
+    size_t get_samp_len() {
+        return sample_len;
     }
 };
 
