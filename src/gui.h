@@ -23,7 +23,7 @@ extern i2s_chan_handle_t tx_handle;
 
 static uint8_t main_menu_pos = 0;
 
-static uint8_t channel_sel_pos = 0;
+static int8_t channel_sel_pos = 0;
 static uint8_t inst_sel_pos = 0;
 
 uint8_t g_octv = 3;
@@ -36,9 +36,11 @@ const char ch_name[5][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"
 };
 
-void set_channel_sel_pos(uint8_t p) {
+void set_channel_sel_pos(int8_t p) {
     if (p > 4) {
         p = 0;
+    } else if (p < 0) {
+        p = 4;
     }
     channel_sel_pos = p;
     if (edit_mode)
@@ -67,13 +69,21 @@ void drawChessboard(int x, int y, int w, int h) {
     }
 }
 
+void drawPinstript(int x, int y, int w, int h) {
+    for (int row = 0; row < h; row++) {
+        for (int col = 0; col < w; col++) {
+            display.drawPixel(x + col, y + row, !((row + col) & 3));
+        }
+    }
+}
+
 void pause_sound() {
     player.stop_play();
     size_t writed;
     int timer = 0;
     while (sound_task_stat) {
         timer++;
-        if (timer > 250) {
+        if (timer > 64) {
             break;
         }
         vTaskDelay(1);
@@ -352,7 +362,7 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
     if (x == 0) x = (128 - width) / 2;
     if (y == 0) y = (64 - height) / 2;
 
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(1);
 
     int8_t menuPos = initPos;
     int8_t pageStart = 0;
@@ -433,8 +443,67 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
     }
 }
 
+int num_set_menu_int(const char* name, int min, int max, int count, int *num, int x, int y, int width, int height) {
+    if (x == 0) x = (128 - width) / 2;
+    if (y == 0) y = (64 - height) / 2;
+    float numCount = (float)(width - 4) / max;
+    
+    for (;;) {
+        display.fillRect(x, y, width, height, 0);
+        display.drawRect(x, y, width, height, 1);
+
+        display.fillRect(x + 1, y + 1, width - 2, 8, 1);
+        display.setTextColor(0);
+        display.setCursor(x + 3, y + 2);
+        display.print(name);
+        display.setTextColor(1);
+
+        display.setCursor(x + 2, y + 12);
+        display.setFont(&font5x7);
+        display.print(*num);
+        display.setFont(&rismol35);
+
+        display.drawRect(x + 2, (y + height) - 10, width - 4, 8, 1);
+        display.fillRect(x + 2, (y + height) - 10, *num * numCount, 8, 1);
+
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_L || e.bit.KEY == KEY_S) {
+                    *num -= count;
+                    if (*num < min) {
+                        *num = min;
+                    }
+                } else if (e.bit.KEY == KEY_R || e.bit.KEY == KEY_P) {
+                    *num += count;
+                    if (*num > max) {
+                        *num = max;
+                    }
+                } else if (e.bit.KEY == KEY_UP) {
+                    *num += count * 2;
+                    if (*num > max) {
+                        *num = max;
+                    }
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    *num -= count * 2;
+                    if (*num < min) {
+                        *num = min;
+                    }
+                } else if (e.bit.KEY == KEY_BACK) {
+                    break;
+                }
+            }
+        }
+
+        vTaskDelay(4);
+    }
+    return *num;
+}
+
 void menu_navi() {
-    drawChessboard(0, 0, 128, 64);
+    drawPinstript(0, 0, 128, 64);
     const char *menu_str[5] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "OSC"};
     int ret = menu("MENU", menu_str, 5, NULL, 64, 45, 0, 0, main_menu_pos);
     if (ret != -1)
@@ -452,7 +521,6 @@ void open_file_page() {
 }
 
 void channel_sel_page() {
-    drawChessboard(0, 0, 128, 64);
     const char *menu_str[5] = {"PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"};
     int ret = menu("CHANNEL", menu_str, 5, NULL, 64, 53, 0, 0, channel_sel_pos);
     if (ret != -1)
@@ -460,12 +528,18 @@ void channel_sel_page() {
 }
 
 void menu_file() {
-    drawChessboard(0, 0, 128, 64);
-    const char *menu_str[3] = {"OPEN", "SAVE", "RECORD"};
-    int ret = menu("FILE", menu_str, 3, NULL, 64, 37, 0, 0, 0);
+    // drawPinstript(0, 0, 128, 64);
+    const char *menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "RECORD"};
+    int ret = menu("FILE", menu_str, 5, NULL, 64, 45, 0, 0, 0);
     switch (ret)
     {
     case 0:
+        pause_sound();
+        ftm.new_ftm();
+        player.reload();
+        break;
+
+    case 1:
         open_file_page();
         break;
     
@@ -494,6 +568,59 @@ void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
     }
 }
 
+void channel_setting_page() {
+    drawPinstript(0, 0, 128, 64);
+    const char *menu_str[2] = {"SELECT CHAN", "EXT EFX NUM"};
+    char title[10];
+    snprintf(title, 10, "CHANNEL%d", channel_sel_pos);
+    int ret = menu(title, menu_str, 2, NULL, 64, 29, 0, 0, 0);
+    int tmp = ftm.he_block.ch_fx[channel_sel_pos];
+    switch (ret)
+    {
+    case 0:
+        channel_sel_page();
+        break;
+
+    case 1:
+        drawPinstript(0, 0, 128, 64);
+        num_set_menu_int("EXT EFX NUM", 0, 3, 1, &tmp, 0, 0, 64, 32);
+        ftm.he_block.ch_fx[channel_sel_pos] = tmp;
+        break;
+
+    default:
+        break;
+    }
+}
+
+void main_option_page() {
+    drawPinstript(0, 0, 128, 64);
+    const char *menu_str[5] = {edit_mode ? "STOP EDIT" : "START EDIT", 
+                                player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
+                                "CHANNEL >", "FILE", "SETTINGS"};
+    int ret = menu("OPTION", menu_str, 5, NULL, 64, 45, 0, 0, 0);
+    switch (ret)
+    {
+    case 0:
+        edit_mode = !edit_mode;
+        break;
+
+    case 1:
+        player.set_mute(channel_sel_pos, !player.get_mute(channel_sel_pos));
+        break;
+    
+    case 2:
+        channel_setting_page();
+        break;
+
+    case 3:
+        menu_file();
+        break;
+
+    default:
+        break;
+    }
+}
+
 void tracker_menu() {
     display.setFont(&rismol35);
     display.setTextWrap(false);
@@ -511,6 +638,9 @@ void tracker_menu() {
         drawChessboard(0, 7, 7, 3);
         // drawChessboard(8, 7, 23, 3);
         for (int c = 0; c < 5; c++) {
+            if (player.get_mute(c))
+                drawChessboard((c * 24) + 8, 7, 23, 3);
+
             display.fillRect((c * 24) + 8, 7, roundf(player.channel[c].get_rel_vol() * (23.0f/225.0f)), 3, 1);
         }
         for (int r = -4; r < 5; r++) {
@@ -590,12 +720,15 @@ void tracker_menu() {
                         start_sound();
                     }
                 } else if (e.bit.KEY == KEY_BACK) {
-                    edit_mode = !edit_mode;
+                    if (edit_mode) {
+                        unpk_item_t pt_tmp;
+                        ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                    }
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
                     break;
                 } else if (e.bit.KEY == KEY_MENU) {
-                    menu_file();
+                    main_option_page();
                 } else if (e.bit.KEY == KEY_P) {
                     player.jmp_to_frame(player.get_frame() + 1);
                     player.set_row(player.get_row() + 1);
@@ -611,7 +744,6 @@ void tracker_menu() {
                 } else if (e.bit.KEY == KEY_R) {
                     set_channel_sel_pos(channel_sel_pos + 1);
                 }
-                channel_sel_pos %= 5;
             }
         }
         vTaskDelay(2);
@@ -692,19 +824,21 @@ void channel_menu() {
         else
             display.drawFastVLine(106, 11, 53, 1);
 
-        if (x_pos < 4) {
-            if (x_pos == 0) {
-                invertRect(9, 33, 13, 9);
-            } else if (x_pos == 1) {
-                invertRect(25, 33, 5, 9);
-            } else if (x_pos == 2) {
-                invertRect(29, 33, 5, 9);
-            } else if (x_pos == 3) {
-                invertRect(37, 33, 5, 9);
+        if (edit_mode) {
+            if (x_pos < 4) {
+                if (x_pos == 0) {
+                    invertRect(9, 33, 13, 9);
+                } else if (x_pos == 1) {
+                    invertRect(25, 33, 5, 9);
+                } else if (x_pos == 2) {
+                    invertRect(29, 33, 5, 9);
+                } else if (x_pos == 3) {
+                    invertRect(37, 33, 5, 9);
+                }
+            } else {
+                int x = ((x_pos - 1) * 4) + (((x_pos - 1) / 3) * 4) + 29;
+                invertRect(x, 33, 5, 9);
             }
-        } else {
-            int x = ((x_pos - 1) * 4) + (((x_pos - 1) / 3) * 4) + 29;
-            invertRect(x, 33, 5, 9);
         }
 
         display.display();
@@ -721,8 +855,12 @@ void channel_menu() {
                         printf("INPUT_NOTE_SET: %d\n", note_set);
                         unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                         pt_tmp.note = note_set;
-                        pt_tmp.octave = octv_set;
-                        pt_tmp.instrument = inst_sel_pos;
+                        if (pt_tmp.note > 12) {
+                            pt_tmp.octave = 0;
+                        } else {
+                            pt_tmp.octave = octv_set;
+                            pt_tmp.instrument = inst_sel_pos;
+                        }
                         ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                         player.set_row(player.get_row() + 1);
                     }
@@ -765,8 +903,27 @@ void channel_menu() {
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
                     break;
+                } else if (e.bit.KEY == KEY_BACK) {
+                    if (edit_mode) {
+                        unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
+                        if (x_pos == 0) {
+                            pt_tmp.note = NO_NOTE;
+                            pt_tmp.instrument = NO_INST;
+                        } else if (x_pos == 1 || x_pos == 2) {
+                            pt_tmp.instrument = NO_INST;
+                        } else if (x_pos == 3) {
+                            pt_tmp.volume = e.bit.KEY;
+                        } else if (x_pos >= 4) {
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = NO_EFX;
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = 0;
+                        }
+                        ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                    } else {
+                        drawPinstript(0, 0, 128, 64);
+                        channel_sel_page();
+                    }
                 } else if (e.bit.KEY == KEY_MENU) {
-                    channel_sel_page();
+                    main_option_page();
                 } else if (e.bit.KEY == KEY_P) {
                     player.jmp_to_frame(player.get_frame() + 1);
                     player.set_row(player.get_row() + 1);
@@ -787,6 +944,39 @@ void channel_menu() {
         }
 
         vTaskDelay(2);
+    }
+}
+
+void frames_option_page() {
+    drawPinstript(0, 0, 128, 64);
+    const char *menu_str[5] = {"PUSH NEW", "INSERT NEW", "MOVE UP", "MOVE DOWN", "REMOVE"};
+    char title[10];
+    snprintf(title, 8, "FRAME%d", player.get_frame());
+    int ret = menu(title, menu_str, 5, NULL, 64, 45, 0, 0, 0);
+    switch (ret)
+    {
+    case 0:
+        ftm.new_frame();
+        break;
+
+    case 1:
+        ftm.insert_new_frame(player.get_frame());
+        break;
+
+    case 2:
+        ftm.moveup_frame(player.get_frame());
+        break;
+
+    case 3:
+        ftm.movedown_frame(player.get_frame());
+        break;
+
+    case 4:
+        ftm.remove_frame(player.get_frame());
+        break;
+    
+    default:
+        break;
     }
 }
 
@@ -896,15 +1086,11 @@ void frames_menu() {
                     menu_navi();
                     break;
                 } else if (e.bit.KEY == KEY_MENU) {
-                    // channel_sel_page();
+                    frames_option_page();
                 } else if (e.bit.KEY == KEY_P) {
-                    // player.jmp_to_frame(player.get_frame() + 1);
-                    // player.set_row(player.get_row() + 1);
-                    ftm.frames[player.get_frame()][channel_sel_pos]++;
+                    ftm.set_frame_plus1(player.get_frame(), channel_sel_pos);
                 } else if (e.bit.KEY == KEY_S) {
-                    // player.jmp_to_frame(player.get_frame() - 1);
-                    // player.set_row(player.get_row() + 1);
-                    ftm.frames[player.get_frame()][channel_sel_pos]--;
+                    ftm.set_frame_minus1(player.get_frame(), channel_sel_pos);
                 } else if (e.bit.KEY == KEY_UP) {
                     player.jmp_to_frame(player.get_frame() - 1);
                     player.set_row(player.get_row() + 1);
@@ -912,11 +1098,10 @@ void frames_menu() {
                     player.jmp_to_frame(player.get_frame() + 1);
                     player.set_row(player.get_row() + 1);
                 } else if (e.bit.KEY == KEY_L) {
-                    channel_sel_pos--;
+                    set_channel_sel_pos(channel_sel_pos - 1);
                 } else if (e.bit.KEY == KEY_R) {
-                    channel_sel_pos++;
+                    set_channel_sel_pos(channel_sel_pos + 1);
                 }
-                channel_sel_pos %= 5;
             }
         }
 

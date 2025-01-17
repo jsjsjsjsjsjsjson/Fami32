@@ -50,8 +50,8 @@ typedef struct __attribute__((packed)) {
     uint32_t size;
     uint8_t track_num = 1;
     char name[64];
-    uint8_t ch_id[8];
-    uint8_t ch_fx[8];
+    uint8_t ch_id[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+    uint8_t ch_fx[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 } HEADER_BLOCK;
 
 typedef struct __attribute__((packed)) {
@@ -79,7 +79,7 @@ typedef struct __attribute__((packed)) {
     uint32_t version = 3;
     uint32_t size;
     uint32_t frame_num = 1;
-    uint32_t speed = 3;
+    uint32_t speed = 6;
     uint32_t tempo = 150;
     uint32_t pat_length = 64;
 } FRAME_BLOCK;
@@ -211,8 +211,16 @@ const char fx2char[32] = {
 #define SET_HEX_B2(a, b) ((a & 0xF0) | b)
 
 class FTM_FILE {
+private:
+    std::vector<std::vector<sequences_t>> sequences;
+    std::vector<instrument_t> instrument;
+
+    std::vector<std::vector<uint8_t>> frames;
+    std::vector<std::vector<pattern_t>> patterns;
+
 public:
     FTM_FILE();
+    void new_ftm();
 
     FILE *ftm_file;
 
@@ -228,12 +236,6 @@ public:
 
     uint32_t sequ_max = 0;
     uint32_t pattern_num = 0;
-
-    std::vector<std::vector<sequences_t>> sequences;
-    std::vector<instrument_t> instrument;
-
-    std::vector<std::vector<uint8_t>> frames = {{0, 0, 0, 0, 0}};
-    std::vector<std::vector<pattern_t>> patterns;
 
     std::vector<std::vector<std::vector<unpk_item_t>>> unpack_pt;
 
@@ -266,9 +268,58 @@ public:
     unpk_item_t get_pt_item(uint8_t c, uint8_t i, uint32_t r);
     void set_pt_item(uint8_t c, uint8_t i, uint32_t r, unpk_item_t item);
     uint8_t get_frame_map(int f, int c);
+
+    void set_frame_map(int f, int c, int n);
+    void set_frame_plus1(int f, int c);
+    void set_frame_minus1(int f, int c);
+
     void print_frame_data(int index);
     uint8_t ch_fx_count(int n);
     void read_ftm_all();
+
+    int8_t get_sequ_data(int type, int index, int seq_index);
+    uint8_t get_sequ_len(int type, int index);
+    sequences_t* get_sequ(int type, int index);
+
+    instrument_t *get_inst(int n);
+
+    void resize_sequ(int type, int index, int n);
+
+    void set_sequ_loop(int type, int index, uint32_t n);
+    uint8_t get_sequ_loop(int type, int index);
+    void set_sequ_release(int type, int index, uint32_t n);
+    uint8_t get_sequ_release(int type, int index);
+
+    void new_frame() {
+        uint8_t next_pt = frames.size();
+        std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
+        frames.push_back(next_fr);
+        fr_block.frame_num = frames.size();
+    }
+
+    void insert_new_frame(int n) {
+        uint8_t next_pt = frames.size();
+        std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
+        frames.insert(frames.begin() + n, next_fr);
+        fr_block.frame_num = frames.size();
+    }
+
+    void remove_frame(int n) {
+        frames.erase(frames.begin() + n);
+        fr_block.frame_num = frames.size();
+    }
+
+    void moveup_frame(int n) {
+        if (n > 0 && n < frames.size()) {
+            std::swap(frames[n], frames[n - 1]);
+        }
+    }
+
+    void movedown_frame(int n) {
+        if (n < frames.size() - 1) {
+            std::swap(frames[n], frames[n + 1]);
+        }
+    }
 };
 
 extern FTM_FILE ftm;

@@ -48,7 +48,7 @@ public:
         memset(pos, 0, sizeof(pos));
         memset(status, 0, sizeof(pos));
         ftm_data = data;
-        instrument = &ftm_data->instrument[0];
+        instrument = ftm_data->get_inst(0);
         set_inst(0);
         DBG_PRINTF("INIT FTM_FILE IN %p\n", ftm_data);
     }
@@ -58,7 +58,8 @@ public:
         memset(status, 0, sizeof(pos));
         inst_num = n;
         // DBG_PRINTF("(DEBUG)INSTRUMENT_SIZE: %d\n", ftm_data->instrument.size());
-        instrument = &ftm_data->instrument[inst_num];
+        instrument_t *inst_new = ftm_data->get_inst(inst_num);
+        if (inst_new != NULL) instrument = inst_new;
     }
 
     int get_inst_num() {
@@ -74,7 +75,7 @@ public:
         for (int i = 0; i < 5; i++) {
             if (instrument->seq_index[i].enable) {
                 status[i] = SEQU_PLAYING;
-                var[i] = ftm_data->sequences[i][instrument->seq_index[i].seq_index].data[0];
+                var[i] = ftm_data->get_sequ_data(i, instrument->seq_index[i].seq_index, 0);
             } else {
                 status[i] = SEQU_STOP;
                 var[i] = i ? 0 : 15;
@@ -104,7 +105,10 @@ public:
     void update_tick() {
         for (int i = 0; i < 5; i++) {
             if (status[i]) {
-                sequences_t *sequ = &ftm_data->sequences[i][instrument->seq_index[i].seq_index];
+                sequences_t *sequ = ftm_data->get_sequ(i, instrument->seq_index[i].seq_index);
+                if (sequ == NULL) {
+                    continue;
+                }
                 pos[i]++;
                 if (status[i] == SEQU_RELEASE) {
                     if (sequ->release == SEQ_FEAT_DISABLE) {
@@ -157,10 +161,12 @@ private:
 
     float pos_count;
 
-    float freq;
-    float period;
+    float freq = 0;
+    float period = 0;
 
     int8_t chl_vol = 15;
+
+    uint8_t last_note = 255;
 
     uint8_t base_note;
     uint8_t rely_note;
@@ -230,8 +236,9 @@ public:
     void clear_all_fx_flag() {
         chl_vol = 15;
         rel_vol = 0;
-        period = 0;
+
         freq = 0;
+        period = 0;
         pos_count = 0;
 
         if (mode < TRIANGULAR) {
@@ -284,6 +291,8 @@ public:
         sample_status = 0;
         sample_len = 0;
         sample_pitch = 0;
+
+        last_note = 255;
     }
 
     void init(FTM_FILE* data) {
@@ -332,8 +341,10 @@ public:
         arp_fx_n2 = 0;
 
         auto_port = n;
-        auto_port_source = get_period();
-        auto_port_finish = true;
+        if (last_note != 255) {
+            auto_port_source = get_period();
+            auto_port_finish = true;
+        }
         slide_up = 0;
         slide_down = 0;
     }
@@ -606,13 +617,12 @@ public:
     }
 
     void note_cut() {
+        last_note = 255;
         if (mode == DPCM_SAMPLE) {
             sample_var = 0;
             sample_status = false;
         } else {
             inst_proc.cut();
-            auto_port = false;
-            auto_port_finish = true;
             portup_speed = false;
             portdown_speed = false;
         }
@@ -712,14 +722,22 @@ public:
     }
 
     void set_note(uint8_t note) {
-        base_note = note;
         if (auto_port) {
-            auto_port_source = get_period();
             auto_port_target = note2period(note);
+            if (last_note == 255) {
+                set_note_rely(note);
+                auto_port_source = get_period();
+                auto_port_source = auto_port_target;
+            } else {
+                auto_port_source = get_period();
+            }
             auto_port_finish = false;
+            // printf("AUTO_PORT (P=%d): %f -> %f\n", last_note, auto_port_source, auto_port_target);
         } else {
             set_note_rely(note);
         }
+        last_note = base_note;
+        base_note = note;
         // DBG_PRINTF("SET_NOTE: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
 
@@ -787,6 +805,8 @@ private:
 
     bool play_status = false;
 
+    bool mute[5] = {false, false, false, false, false};
+
 public:
     FAMI_CHANNEL channel[5];
 
@@ -825,6 +845,7 @@ public:
 
     void start_play() {
         play_status = true;
+        tick_accumulator = 0;
         row = 0;
         // frame = 0;
     }
@@ -873,7 +894,8 @@ public:
         for (size_t i = 0; i < buf.size(); i++) {
             int32_t r = 0;
             for (int c = 0; c < 5; c++) {
-                r += channel[c].get_buf()[i];
+                if (!mute[c])
+                    r += channel[c].get_buf()[i];
             }
 
             r = hpf.process(r);
@@ -924,6 +946,9 @@ public:
             } else if (fxdata[i].fx_cmd == 0x03) {
                 next_frame(fxdata[i].fx_var - 1);
                 DBG_PRINTF("C%d: SKIP TO NEXT FRAME ROW %d\n", c, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x04) {
+                stop_play();
+                DBG_PRINTF("SONG HALT\n");
             } else if (fxdata[i].fx_cmd == 0x06) {
                 channel[c].set_auto_port(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET AUTO_PORT -> %d\n", c, fxdata[i].fx_var);
@@ -1042,11 +1067,13 @@ public:
     }
 
     void jmp_to_frame(int f) {
-        row = -1;
-        frame = f;
-        while (frame >= ftm_data->fr_block.frame_num) {
-            frame -= ftm_data->fr_block.frame_num;
+        if (f >= ftm_data->fr_block.frame_num) {
+            f = 0;
+        } else if (f < 0) {
+            f = ftm_data->fr_block.frame_num - 1;
         }
+        frame = f;
+        row = -1;
     }
 
     int16_t* get_buf() {
@@ -1079,6 +1106,14 @@ public:
 
     bool get_play_status() {
         return play_status;
+    }
+
+    void set_mute(int c, bool s) {
+        mute[c] = s;
+    }
+
+    bool get_mute(int c) {
+        return mute[c];
     }
 
 private:

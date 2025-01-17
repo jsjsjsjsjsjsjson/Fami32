@@ -2,18 +2,56 @@
 extern int errno;
 
 FTM_FILE::FTM_FILE() {
+    new_ftm();
+}
+
+void FTM_FILE::new_ftm() {
+    FTM_HEADER hd_new;
+    PARAMS_BLOCK pr_new;
+    INFO_BLOCK nf_new;
+    HEADER_BLOCK he_new;
+    INSTRUMENT_BLOCK inst_new;
+    SEQUENCES_BLOCK seq_new;
+    FRAME_BLOCK fr_new;
+    PATTERN_BLOCK pt_new;
+    DPCM_SAMPLE_BLOCK dpcm_new;
+
+    header = hd_new;
+    pr_block = pr_new;
+    nf_block = nf_new;
+    he_block = he_new;
+    inst_block = inst_new;
+    seq_block = seq_new;
+    fr_block = fr_new;
+    pt_block = pt_new;
+    dpcm_block = dpcm_new;
+
+    frames.clear();
+    new_frame();
+
+    patterns.clear();
     patterns.resize(pr_block.channel);
+
+    unpack_pt.clear();
     unpack_pt.resize(pr_block.channel);
+
+    for (int c = 0; c < pr_block.channel; c++) {
+        patterns[c].resize(1);
+    }
 
     for (int c = 0; c < pr_block.channel; c++) {
         unpack_pt[c].resize(1);
         unpack_pt[c][0].resize(fr_block.pat_length);
     }
 
+    dpcm_samples.clear();
+    instrument.clear();
+    sequences.clear();
     create_new_inst();
 }
 
 void FTM_FILE::create_new_inst() {
+    inst_block.inst_num++;
     instrument.emplace_back();
 }
 
@@ -433,6 +471,82 @@ uint8_t FTM_FILE::get_frame_map(int f, int c) {
         return 0;
     }
     return frames[f][c];
+}
+
+void FTM_FILE::set_frame_map(int f, int c, int n) {
+    if (f >= frames.size() || c >= frames[f].size()) {
+        return;
+    }
+    frames[f][c] = n;
+}
+
+void FTM_FILE::set_frame_plus1(int f, int c) {
+    if (f >= frames.size() || c >= frames[f].size()) {
+        return;
+    }
+    frames[f][c]++;
+}
+
+void FTM_FILE::set_frame_minus1(int f, int c) {
+    if (f >= frames.size() || c >= frames[f].size()) {
+        return;
+    }
+    frames[f][c]--;
+}
+
+instrument_t* FTM_FILE::get_inst(int n) {
+    if (n >= instrument.size()) return NULL;
+    return &instrument[n];
+}
+
+int8_t FTM_FILE::get_sequ_data(int type, int index, int seq_index) {
+    if (type >= sequences.size()) return 0;
+    if (index >= sequences[type].size()) return 0;
+    if (seq_index >= sequences[type][index].data.size()) return 0;
+    return sequences[type][index].data[seq_index];
+}
+
+sequences_t* FTM_FILE::get_sequ(int type, int index) {
+    if (type >= sequences.size()) return NULL;
+    if (index >= sequences[type].size()) return NULL;
+    return &sequences[type][index];
+}
+
+uint8_t FTM_FILE::get_sequ_len(int type, int index) {
+    if (type >= sequences.size()) return 0;
+    if (index >= sequences[type].size()) return 0;
+    return sequences[type][index].length;
+}
+
+void FTM_FILE::resize_sequ(int type, int index, int n) {
+    if (type >= sequences.size()) return;
+    if (index >= sequences[type].size()) return;
+    sequences[type][index].data.resize(n);
+    sequences[type][index].length = sequences[type][index].data.size();
+}
+
+void FTM_FILE::set_sequ_loop(int type, int index, uint32_t n) {
+    if (type >= sequences.size()) return;
+    if (index >= sequences[type].size()) return;
+    sequences[type][index].loop = n;
+}
+
+uint8_t FTM_FILE::get_sequ_loop(int type, int index) {
+    if (type >= sequences.size()) return 0;
+    if (index >= sequences[type].size()) return 0;
+    return sequences[type][index].loop;
+}
+
+void FTM_FILE::set_sequ_release(int type, int index, uint32_t n) {
+    if (type >= sequences.size()) return;
+    if (index >= sequences[type].size()) return;
+    sequences[type][index].release = n;
+}
+
+uint8_t FTM_FILE::get_sequ_release(int type, int index) {
+    if (type >= sequences.size()) return 0;
+    if (index >= sequences[type].size()) return 0;
+    return sequences[type][index].release;
 }
 
 FTM_FILE ftm;
