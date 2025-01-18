@@ -20,7 +20,7 @@
 #define KEYPAD_ROWS 4
 #define KEYPAD_COLS 3
 
-char KEYPAD_MAP[KEYPAD_ROWS][KEYPAD_COLS] = {
+const char KEYPAD_MAP[KEYPAD_ROWS][KEYPAD_COLS] = {
     {KEY_L,    KEY_OK,   KEY_MENU},
     {KEY_UP,   KEY_S,    KEY_NAVI},
     {KEY_R,    KEY_BACK, KEY_OCTD},
@@ -68,5 +68,12 @@ const uint8_t TOUCHPAD_MAP[24] =
 #define LED_NUM 16
 #define LED_GPIO 11
 // LED (WS2812)
+
+#define DBG_PRINTF(fmt, ...) \
+    do { \
+        if (_debug_print) { \
+            printf(fmt, ##__VA_ARGS__); \
+        } \
+    } while(0)
 
 #endif // CHIPBOX_PIN_H

@@ -7,12 +7,43 @@
 #include "fonts/rismol_3_4.h"
 #include "fonts/rismol_3_5.h"
 #include "fonts/3x5font.h"
-#include "fonts/font5x7.h"
+#include "fonts/rismol_5_7.h"
 #include "fonts/font4x6.h"
+
+#include "chipbox_pin.h"
 
 #include <fami32_icon.h>
 
 #include <dirent.h>
+
+const char *random_name[177] = {
+    "Brave", "Zephyr", "Glade", "Frost", "Echo", "Briar", "Thorn", "Alder",
+    "Misty", "Flare", "Nimbus", "Gale", "Sylva", "Cliff", "Raven", "Ashen",
+    "Vail", "Drift", "Skye", "Dawn", "Coral", "Storm", "Ember", "Warden",
+    "Pine", "Flint", "Violet", "Cinder", "Onyx", "Blaze", "Thorny", "Horizon",
+    "Quill", "Violet", "Noble", "Fjord", "Cobalt", "Ashby", "Peregrine", "Opal",
+    "Rustle", "Falcon", "Vermil", "Ivy", "Haven", "Slate", "Talon", "Tempest",
+    "Lynx", "Ridge", "Shade", "Astra", "Vesper", "Nash", "Sable", "Drake",
+    "Rook", "Moss", "Emberly", "Hail", "Cedar", "Mist", "Birch", "Crimson",
+    "Starla", "Dusk", "Wilder", "Ashwood", "Jade", "Ravenna", "Breeze", "Nira",
+    "Omen", "Fable", "Vale", "Thistle", "Severn", "Glimmer", "Sablewood", "Wisp",
+    "Bracken", "Emberstone", "Winterfell", "Dawnstone", "Blightmoor", "Ironbark", 
+    "Frostbloom", "Shadowmere", "Nightfall", "Mooncrest", "Windhaven", "Stormwatch", 
+    "Falconer", "Mistral", "Silverthorn", "Dragonfire", "Vortex", "Ravenclaw", 
+    "Draegar", "Sablewind", "Grimwood", "Valkyrie", "Darkholme", "Stoneforge",
+    "Seabrook", "Celestia", "Ashfall", "Hallowbrook", "Thundershade", "Winterhold",
+    "Obsidian", "Stormbringer", "Nightshade", "Frostveil", "Ironfang", "Moonshadow",
+    "Brightstone", "Griffon", "Halloway", "Redthorn", "Brimstone", "Wolfbane",
+    "Oakencrest", "Ironveil", "Swiftwind", "Bluefire", "Crystal", "Duskwalker", 
+    "Mistveil", "Goldleaf", "Ravenwood", "Briarwood", "Falconcrest", "Stormbringer", 
+    "Thornfield", "Nighthawk", "Vandale", "Silverclaw", "Eldritch", "Tornel", 
+    "Glimmerstone", "Wolfsbane", "Ebonfall", "Blightforge", "Nightwing", "Duskfall",
+    "Ravencroft", "Thorncrest", "Falcontide", "Vampira", "Firestrike", "Glacier",
+    "Snowcrest", "Havenglen", "Stoneheart", "Mistrider", "Darkwing", "Ashburn", 
+    "Silverfang", "Draugr", "Emberfall", "Stormrage", "Moonfire", "Obsidian", 
+    "Ironclad", "Mistvale", "Thunderpeak", "Dreadmoor", "Skyfire", "Blazewood", 
+    "Ravenshade", "Brumel", "Shadewood", "Frostmoon", "Valkyr", "Wyrmstone", "Dragonhold"
+};
 
 extern FAMI_PLAYER player;
 extern Adafruit_SSD1306 display;
@@ -77,6 +108,49 @@ void drawPinstript(int x, int y, int w, int h) {
             display.drawPixel(x + col, y + row, !((row + col) & 3));
         }
     }
+}
+
+void drawRectWithNegativeSize(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+
+    if (h < 0) {
+        y += h;
+        h = -h;
+    }
+    display.drawRect(x, y, w, h, color);
+}
+
+void fillRectWithNegativeSize(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+
+    if (h < 0) {
+        y += h;
+        h = -h;
+    } else {
+        y += 1;
+    }
+    display.fillRect(x, y, w, h, color);
+}
+
+void drawChessboardWithNegativeSize(int16_t x, int16_t y, int16_t w, int16_t h) {
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+
+    if (h < 0) {
+        y += h;
+        h = -h;
+    } else {
+        y += 1;
+    }
+    drawChessboard(x, y, w, h);
 }
 
 void pause_sound() {
@@ -370,6 +444,7 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
     int8_t pageStart = 0;
     const uint8_t itemsPerPage = (height - 10) / 8;
 
+    display.drawRect(x - 1, y - 1, width + 2, height + 2, 0);
 
     for (;;) {
         display.fillRect(x, y, width, height, 0);
@@ -396,7 +471,7 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
             if (i == menuPos) {
                 display.fillRect(x, itemYPos + 1, width, 7, SSD1306_WHITE);
                 display.setTextColor(SSD1306_BLACK);
-                display.setCursor(x + 3, itemYPos + 2);
+                display.setCursor(x + 4, itemYPos + 2);
             } else {
                 display.setTextColor(SSD1306_WHITE);
                 display.setCursor(x + 3, itemYPos + 2);
@@ -449,6 +524,8 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
     if (x == 0) x = (128 - width) / 2;
     if (y == 0) y = (64 - height) / 2;
     float numCount = (float)(width - 4) / max;
+
+    display.drawRect(x - 1, y - 1, width + 2, height + 2, 0);
     
     for (;;) {
         display.fillRect(x, y, width, height, 0);
@@ -461,7 +538,7 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
         display.setTextColor(1);
 
         display.setCursor(x + 2, y + 12);
-        display.setFont(&font5x7);
+        display.setFont(&rismol57);
         display.print(*num);
         display.setFont(&rismol35);
 
@@ -493,7 +570,7 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
                     if (*num < min) {
                         *num = min;
                     }
-                } else if (e.bit.KEY == KEY_BACK) {
+                } else if (e.bit.KEY == KEY_BACK || e.bit.KEY == KEY_OK) {
                     break;
                 }
             }
@@ -706,6 +783,7 @@ void tracker_menu() {
                     unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                     pt_tmp.note = note_set;
                     pt_tmp.octave = octv_set;
+                    pt_tmp.instrument = inst_sel_pos;
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                     player.set_row(player.get_row() + 1);
                 }
@@ -746,6 +824,10 @@ void tracker_menu() {
                     set_channel_sel_pos(channel_sel_pos - 1);
                 } else if (e.bit.KEY == KEY_R) {
                     set_channel_sel_pos(channel_sel_pos + 1);
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
                 }
             }
         }
@@ -761,7 +843,7 @@ void channel_menu() {
 
         display.fillRect(0, 0, 128, 9, 1);
         display.setTextColor(0);
-        display.setFont(&font5x7);
+        display.setFont(&rismol57);
         display.setCursor(1, 1);
         display.printf("%s ", ch_name[channel_sel_pos]);
         display.setFont(&font4x6);
@@ -941,6 +1023,10 @@ void channel_menu() {
                     x_pos--;
                 } else if (e.bit.KEY == KEY_R) {
                     x_pos++;
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
                 }
                 x_pos %= 4 + (ftm.ch_fx_count(channel_sel_pos) * 3);
             }
@@ -989,7 +1075,7 @@ void frames_menu() {
 
         display.fillRect(0, 0, 128, 9, 1);
         display.setTextColor(0);
-        display.setFont(&font5x7);
+        display.setFont(&rismol57);
         display.setCursor(1, 1);
         display.printf("FRAMES ");
         display.setFont(&font4x6);
@@ -1001,7 +1087,7 @@ void frames_menu() {
         }
         display.drawFastHLine(0, 9, tol_vol / 8, 1);
 
-        display.setFont(&font5x7);
+        display.setFont(&rismol57);
         display.setCursor(1, 12);
         for (int f = -2; f < 3; f++) {
             if (f) {
@@ -1015,7 +1101,7 @@ void frames_menu() {
                 display.setFont(&font4x6);
                 display.printf("%02X", player.get_frame() + f);
                 display.setCursor(display.getCursorX() + 3, display.getCursorY());
-                display.setFont(&font5x7);
+                display.setFont(&rismol57);
                 for (int c = 0; c < 5; c++) {
                     display.printf("%02X", ftm.get_frame_map(player.get_frame() + f, c));
                     display.setCursor(display.getCursorX() + 3, display.getCursorY());
@@ -1104,15 +1190,322 @@ void frames_menu() {
                     set_channel_sel_pos(channel_sel_pos - 1);
                 } else if (e.bit.KEY == KEY_R) {
                     set_channel_sel_pos(channel_sel_pos + 1);
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
                 }
             }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
         }
 
         vTaskDelay(4);
     }
 }
 
+void sequence_editor(instrument_t *inst) {
+    int sequ_type = 0;
+
+    int sequ_sel_index = 0;
+
+    int pageStart = 0;
+    int pageEnd = 32;
+
+    const char *sequ_name[5] = {"VOLUME", "ARPEGGIO", "PITCH", "HI-PITCH", "DUTY"};
+
+    const char *menu_str[4] = {"LENGTH", "LOOP", "RELEASE", "SEQU INDEX"};
+
+    int draw_base = 30;
+
+    if (inst == NULL) {
+        return;
+    }
+
+    for (;;) {
+        display.clearDisplay();
+
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setTextColor(0);
+        display.setCursor(1, 1);
+        display.setFont(&rismol57);
+        display.print(inst->name);
+
+        display.drawBitmap(120, 1, fami32_icon[sequ_type], 7, 7, 0);
+        if (!inst->seq_index[sequ_type].enable) {
+            invertRect(119, 0, 9, 9);
+        }
+
+        // display.drawFastHLine(0, 9, player.channel[channel_sel_pos].get_rel_vol() / 2, 1);
+
+        // display.drawRect(0, 10, 128, 42, 1);
+        display.drawFastHLine(0, 10, 128, 1);
+        display.drawFastHLine(0, 51, 128, 1);
+
+        display.setFont(&rismol35);
+        display.setTextColor(1);
+
+        sequences_t *sequ = ftm.get_sequ(sequ_type, inst->seq_index[sequ_type].seq_index);
+
+        if (sequ != NULL) {
+            int draw_w = (sequ->length <= 32) ? (128 / sequ->length) : 4;
+
+            if (sequ->length <= 32) {
+                pageEnd = sequ->length;
+                drawChessboard(sequ->length * draw_w, 11, 128 - (sequ->length * draw_w), 40);
+            }
+
+            display.setFont(&rismol34);
+            display.setCursor(112, 54);
+            display.print("LOOP");
+            display.setCursor(100, 59);
+            display.print("RELEASE");
+            display.setFont(&rismol35);
+
+            if (pageEnd > sequ->loop) {
+                int draw_start = sequ->loop - pageStart;
+                invertRect(draw_start * draw_w, 54, 128 - (draw_start * draw_w), 4);
+            }
+
+            if (pageEnd > sequ->release) {
+                int draw_start = sequ->release - pageStart;
+                invertRect(draw_start * draw_w, 59, 128 - (draw_start * draw_w), 4);
+            }
+
+            if (sequ_type == VOL_SEQU) {
+                drawChessboard(0, 20, 128, 1);
+                for (int i = pageStart; i < pageEnd; i++) {
+                    int displayIndex = i - pageStart;
+                    if ((player.channel[channel_sel_pos].get_inst() == inst) && (player.channel[channel_sel_pos].get_inst_pos(sequ_type) == i)) {
+                        drawChessboard((displayIndex * draw_w) + 1, (51 - (sequ->data[i] * 2)) + 1, draw_w - 2, (sequ->data[i] * 2) - 2);
+                    }
+                    if (i == sequ_sel_index) {
+                        display.drawFastHLine(displayIndex * draw_w, 12, draw_w, 1);
+                        display.fillRect(displayIndex * draw_w, (51 - (sequ->data[i] * 2)), draw_w, sequ->data[i] * 2, 1);
+                    } else {
+                        display.drawRect(displayIndex * draw_w, (51 - (sequ->data[i] * 2)), draw_w, sequ->data[i] * 2, 1);
+                    }
+                }
+                display.setCursor(0, 12);
+            } else if (sequ_type == ARP_SEQU) {
+                drawChessboard(0, draw_base, 128, 1);
+                for (int i = pageStart; i < pageEnd; i++) {
+                    int displayIndex = i - pageStart;
+                    // display.drawRect(i * draw_w, (51 - (sequ->data[i] * 2)), draw_w, sequ->data[i] * 2, 1);
+                    if ((player.channel[channel_sel_pos].get_inst() == inst) && (player.channel[channel_sel_pos].get_inst_pos(sequ_type) == i)) {
+                        drawChessboard((displayIndex * draw_w) + 1, (draw_base - sequ->data[i]), draw_w - 1, 1);
+                    }
+                    if (i == sequ_sel_index) {
+                        display.drawFastHLine(displayIndex * draw_w, 12, draw_w, 1);
+                        display.fillRect(displayIndex * draw_w, (draw_base - sequ->data[i]) - 1, draw_w + 1, 3, 1);
+                    } else {
+                        display.drawRect(displayIndex * draw_w, (draw_base - sequ->data[i]) - 1, draw_w + 1, 3, 1);
+                    }
+                }
+                display.setCursor(0, 45);
+            } else if (sequ_type == DTY_SEQU) {
+                drawChessboard(0, 20, 128, 1);
+                for (int i = pageStart; i < pageEnd; i++) {
+                    int displayIndex = i - pageStart;
+                    if ((player.channel[channel_sel_pos].get_inst() == inst) && (player.channel[channel_sel_pos].get_inst_pos(sequ_type) == i)) {
+                        drawChessboard((displayIndex * draw_w) + 1, (51 - (sequ->data[i] * 10)) + 1, draw_w - 2, (sequ->data[i] * 10) - 2);
+                    }
+                    if (i == sequ_sel_index) {
+                        display.drawFastHLine(displayIndex * draw_w, 12, draw_w, 1);
+                        display.fillRect(displayIndex * draw_w, (51 - (sequ->data[i] * 10)), draw_w, (sequ->data[i] * 10), 1);
+                    } else {
+                        display.drawRect(displayIndex * draw_w, (51 - (sequ->data[i] * 10)), draw_w, (sequ->data[i] * 10), 1);
+                    }
+                }
+                display.setCursor(0, 12);
+            } else {
+                drawChessboard(0, draw_base, 128, 1);
+                for (int i = pageStart; i < pageEnd; i++) {
+                    int displayIndex = i - pageStart;
+                    if ((player.channel[channel_sel_pos].get_inst() == inst) && (player.channel[channel_sel_pos].get_inst_pos(sequ_type) == i)) {
+                        drawChessboardWithNegativeSize((displayIndex * draw_w) + 1, draw_base, draw_w - 2, -sequ->data[i]);
+                    }
+                    if (i == sequ_sel_index) {
+                        display.drawFastHLine(displayIndex * draw_w, 12, draw_w, 1);
+                        fillRectWithNegativeSize(displayIndex * draw_w, draw_base, draw_w, -sequ->data[i], 1);
+                    } else {
+                        drawRectWithNegativeSize(displayIndex * draw_w, draw_base, draw_w, -sequ->data[i], 1);
+                    }
+                }
+                display.setCursor(0, 45);
+            }
+
+            display.printf("(%d,%d)", sequ_sel_index, sequ->data[sequ_sel_index]);
+        } else {
+            display.setCursor(0, 14);
+            display.printf("NULL %s SEQUENCE: #%d\nPRESS OK TO CREATE IT...", sequ_name[sequ_type], inst->seq_index[sequ_type].seq_index);
+        }
+        
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    inst->seq_index[sequ_type].enable = !inst->seq_index[sequ_type].enable;
+                    if (sequ == NULL) {
+                        ftm.resize_sequ(sequ_type, inst->seq_index[sequ_type].seq_index + 1);
+                        ftm.resize_sequ_len(sequ_type, inst->seq_index[sequ_type].seq_index, 1);
+                    }
+                } else if (e.bit.KEY == KEY_BACK) {
+                    return;
+                } else if (e.bit.KEY == KEY_MENU) {
+                    int ret = menu("SELECT SEQUENCE", sequ_name, 5, NULL, 68, 53, 0, 0, sequ_type);
+                    if (ret != -1) {
+                        sequ_sel_index = 0;
+                        sequ_type = ret;
+                    }
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    int ret = menu("SEQUENCE", menu_str, 4, NULL, 60, 45, 0, 0, 0);
+                    int sequ_len;
+                    int sequ_index_ref;
+                    int loop_ref;
+                    int release_ref;
+                    if (sequ != NULL) {
+                        sequ_len = sequ->length;
+                        sequ_index_ref = inst->seq_index[sequ_type].seq_index;
+                        loop_ref = sequ->loop;
+                        release_ref = sequ->release;
+                    }
+                    switch (ret)
+                    {
+                    case 0:
+                        if (sequ != NULL) {
+                            num_set_menu_int("SEQU LENGTH", 1, 255, 1, &sequ_len, 0, 0, 100, 34);
+                            ftm.resize_sequ_len(sequ_type, inst->seq_index[sequ_type].seq_index, sequ_len);
+                            sequ_sel_index = sequ_len - 1;
+                        }
+                        break;
+
+                    case 1:
+                        if (sequ != NULL) {
+                            num_set_menu_int("SEQU LOOP", -1, sequ_len - 1, 1, &loop_ref, 0, 0, 126, 34);
+                            sequ->loop = loop_ref;
+                        }
+                        break;
+
+                    case 2:
+                        if (sequ != NULL) {
+                            num_set_menu_int("SEQU RELEASE", -1, sequ_len - 1, 1, &release_ref, 0, 0, 126, 34);
+                            sequ->release = release_ref;
+                        }
+                        break;
+
+                    case 3:
+                        num_set_menu_int("SEQU INDEX", 0, 255, 1, &sequ_index_ref, 0, 0, 64, 34);
+                        inst->seq_index[sequ_type].seq_index = sequ_index_ref;
+                        break;
+
+                    default:
+                        break;
+                    }
+                } else if (e.bit.KEY == KEY_L) {
+                    if (sequ != NULL) {
+                        sequ_sel_index--;
+                        if (sequ_sel_index < 0) {
+                            sequ_sel_index = sequ->length - 1;
+                            if (sequ->length > 32) {
+                                pageStart = sequ->length - 32;
+                                pageEnd = sequ->length;
+                            }
+                        } else if (sequ_sel_index < pageStart) {
+                            pageStart = sequ_sel_index;
+                            pageEnd = pageStart + 32;
+                        }
+                    }
+                } else if (e.bit.KEY == KEY_R) {
+                    if (sequ != NULL) {
+                        sequ_sel_index++;
+                        if (sequ_sel_index >= sequ->length) {
+                            sequ_sel_index = 0;
+                            pageStart = 0;
+                            pageEnd = 32;
+                        } else if (sequ_sel_index >= pageEnd) {
+                            pageEnd = sequ_sel_index + 1;
+                            pageStart = pageEnd - 32;
+                        }
+                    }
+                } else if (e.bit.KEY == KEY_UP) {
+                    draw_base++;
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    draw_base--;
+                } else if (e.bit.KEY == KEY_P) {
+                    if (sequ != NULL) {
+                        sequ->data[sequ_sel_index]++;
+                        if (sequ_type == VOL_SEQU && sequ->data[sequ_sel_index] > 15) {
+                            sequ->data[sequ_sel_index] = 15;
+                        } if (sequ_type == DTY_SEQU && sequ->data[sequ_sel_index] > 3) {
+                            sequ->data[sequ_sel_index] = 0;
+                        }
+                    }
+                } else if (e.bit.KEY == KEY_S) {
+                    if (sequ != NULL) {
+                        sequ->data[sequ_sel_index]--;
+                        if (sequ->data[sequ_sel_index] < 0) {
+                            if (sequ_type == VOL_SEQU) {
+                                sequ->data[sequ_sel_index] = 0;
+                            } else if (sequ_type == DTY_SEQU) {
+                                sequ->data[sequ_sel_index] = 3;
+                            }
+                        }
+                    }
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
+                }
+            }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
+        }
+
+        vTaskDelay(4);
+    }
+}
+
+void instrument_option_page() {
+    const char *menu_str[3] = {"NEW", "RENAME (?", "REMOVE"};
+    int ret = menu("INSTRUMENT", menu_str, 3, NULL, 60, 37, 0, 0, 0);
+    switch (ret)
+    {
+    case 0:
+        ftm.create_new_inst();
+        break;
+
+    case 1:
+        strcpy(ftm.get_inst(inst_sel_pos)->name, random_name[rand() % 177]);
+        ftm.get_inst(inst_sel_pos)->name_len = strlen(ftm.get_inst(inst_sel_pos)->name);
+        break;
+
+    case 2:
+        ftm.remove_inst(inst_sel_pos);
+        break;
+    
+    default:
+        break;
+    }
+    if (inst_sel_pos >= ftm.inst_block.inst_num) {
+        inst_sel_pos = ftm.inst_block.inst_num - 1;
+    }
+}
+
 void instrument_menu() {
+    if (inst_sel_pos >= ftm.inst_block.inst_num) {
+        inst_sel_pos = ftm.inst_block.inst_num - 1;
+    }
     int pageStart = 0;
     const int itemsPerPage = 6;
     for (;;) {
@@ -1120,7 +1513,7 @@ void instrument_menu() {
 
         display.fillRect(0, 0, 128, 9, 1);
         display.setTextColor(0);
-        display.setFont(&font5x7);
+        display.setFont(&rismol57);
         display.setCursor(1, 1);
         display.printf("INSTRUMENT ");
         display.setFont(&font4x6);
@@ -1186,10 +1579,12 @@ void instrument_menu() {
             keypadEvent e = keypad.read();
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
                 if (e.bit.KEY == KEY_OK) {
-                    // OK
+                    sequence_editor(ftm.get_inst(inst_sel_pos));
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
                     break;
+                } else if (e.bit.KEY == KEY_MENU) {
+                    instrument_option_page();
                 } else if (e.bit.KEY == KEY_BACK) {
                     // BACK
                 } else if (e.bit.KEY == KEY_UP) {
@@ -1204,6 +1599,14 @@ void instrument_menu() {
                         inst_sel_pos = 0;
                         pageStart = 0;
                     }
+                } else if (e.bit.KEY == KEY_L) {
+                    set_channel_sel_pos(channel_sel_pos - 1);
+                } else if (e.bit.KEY == KEY_R) {
+                    set_channel_sel_pos(channel_sel_pos + 1);
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
                 }
             }
         }

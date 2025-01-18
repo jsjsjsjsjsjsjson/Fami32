@@ -11,16 +11,11 @@
 #include "wave_table.h"
 #include "src_config.h"
 
+#include "chipbox_pin.h"
+
 #include "basic_dsp.h"
 
-bool _debug_print = false;
-
-#define DBG_PRINTF(fmt, ...) \
-    do { \
-        if (_debug_print) { \
-            printf(fmt, ##__VA_ARGS__); \
-        } \
-    } while(0)
+extern bool _debug_print;
 
 #define VOL_SEQU 0
 #define ARP_SEQU 1
@@ -462,9 +457,12 @@ public:
         if (mode != DPCM_SAMPLE) {
             if (inst_proc.get_sequ_enable(PIT_SEQU) || inst_proc.get_sequ_enable(HPI_SEQU)) {
                 if (mode < 5) {
-                    set_period(get_period()
-                                + (float)inst_proc.get_sequ_var(PIT_SEQU) +
-                                (float)(inst_proc.get_sequ_var(HPI_SEQU) * 16));
+                    if (inst_proc.get_status(PIT_SEQU)) {
+                        set_period(get_period() + (float)inst_proc.get_sequ_var(PIT_SEQU));
+                    }
+                    if (inst_proc.get_status(HPI_SEQU)) {
+                        set_period(get_period() + (float)(inst_proc.get_sequ_var(HPI_SEQU) * 16));
+                    }
                 } else if (mode > 5) {
                     // DBG_PRINTF("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
                     set_noise_rate((noise_rate_rel - inst_proc.get_sequ_var(PIT_SEQU)) & 15);
@@ -793,6 +791,10 @@ public:
     size_t get_samp_len() {
         return sample_len;
     }
+
+    uint32_t get_inst_pos(int sequ_type) {
+        return inst_proc.get_pos(sequ_type);
+    }
 };
 
 class FAMI_PLAYER {
@@ -860,8 +862,10 @@ public:
     }
 
     void start_play() {
+        set_speed(ftm_data->fr_block.speed);
+        set_tempo(ftm_data->fr_block.tempo);
         play_status = true;
-        tick_accumulator = 0;
+        tick_accumulator = ticks_row;
         row = 0;
         // frame = 0;
     }
@@ -873,6 +877,7 @@ public:
             channel[c].clear_all_fx_flag();
             memset(channel[c].get_buf(), 0, channel[c].get_buf_size_byte());
         }
+        tick_accumulator = 0;
         // memset(buf.data(), 0, get_buf_size_byte());
     }
 

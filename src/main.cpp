@@ -12,6 +12,8 @@
 #include "SerialTerminal.h"
 #include "gui.h"
 
+bool _debug_print = false;
+
 extern "C" {
 #include "ls.h"
 }

@@ -6,6 +6,8 @@
 #include <string.h>
 #include <vector>
 
+#include "chipbox_pin.h"
+
 extern "C" {
 #include "dpcm.h"
 }
@@ -117,18 +119,18 @@ typedef struct __attribute__((packed)) {
     uint32_t seq_count = 5;
     seq_index_t seq_index[5] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
     dpcm_t dpcm[96];
-    uint32_t name_len = 14;
-    char name[64] = "New Instrument";
+    uint32_t name_len = 16;
+    char name[64] = "EMPTY INSTRUMENT";
 } instrument_t;
 
 typedef struct __attribute__((packed)) {
     uint32_t index;
     uint32_t type;
     uint8_t length;
-    uint32_t loop;
+    uint32_t loop = -1;
     std::vector<int8_t> data;
-    uint32_t release;
-    uint32_t setting;
+    uint32_t release = -1;
+    uint32_t setting = 0;
 } sequences_t;
 
 typedef struct __attribute__((packed)) {
@@ -242,6 +244,7 @@ public:
     std::vector<dpcm_sample_t> dpcm_samples;
 
     void create_new_inst();
+    void remove_inst(int n);
 
     int open_ftm(const char *filename);
 
@@ -283,7 +286,9 @@ public:
 
     instrument_t *get_inst(int n);
 
-    void resize_sequ(int type, int index, int n);
+    void resize_sequ_len(int type, int index, int n);
+
+    void resize_sequ(int type, int size);
 
     void set_sequ_loop(int type, int index, uint32_t n);
     uint8_t get_sequ_loop(int type, int index);
