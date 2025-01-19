@@ -531,7 +531,7 @@ int fullScreenMenu(const char* name, const char* menuStr[], uint8_t maxMenuPos, 
 
     int8_t menuPos = initPos;
     int8_t pageStart = 0;
-    const uint8_t itemsPerPage = 7;
+    const uint8_t itemsPerPage = 6;
 
     for (;;) {
         display.clearDisplay();
@@ -799,10 +799,22 @@ void finetune_set() {
     }
 }
 
+void erase_config_set() {
+    const char *menu_str[2] = {"NO", "YES"};
+    int ret = menu("ARE YOU SURE !?", menu_str, 2, NULL, 68, 29, 0, 0, 0);
+    if (ret == 1) {
+        display.setFont(&rismol57);
+        drawPopupBox("ERASE CONFIG...", 0, 0, 0, 0);
+        display.display();
+        remove(config_path);
+        esp_restart();
+    }
+}
+
 void settings_page() {
-    const char *menu_str[5] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE"};
-    void (*menuFunc[5])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set};
-    fullScreenMenu("SETTINGS", menu_str, 5, menuFunc, 0);
+    const char *menu_str[6] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "ERASE CONFIG"};
+    void (*menuFunc[6])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, erase_config_set};
+    fullScreenMenu("SETTINGS", menu_str, 6, menuFunc, 0);
     display.setFont(&rismol57);
     drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
     display.display();

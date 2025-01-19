@@ -302,7 +302,7 @@ public:
         inst_proc.init(data);
         tick_buf.resize(tick_length);
         DBG_PRINTF("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
-        hpf.setCutoffFrequency(64, SAMP_RATE);
+        hpf.setCutoffFrequency(HPF_CUTOFF, SAMP_RATE);
     }
 
     void set_slide_up(uint8_t n) {
@@ -847,7 +847,7 @@ public:
         set_speed(ftm_data->fr_block.speed);
         set_tempo(ftm_data->fr_block.tempo);
 
-        lpf.setCutoffFrequency(18000, SAMP_RATE);
+        lpf.setCutoffFrequency(LPF_CUTOFF, SAMP_RATE);
     }
 
     void reload() {
