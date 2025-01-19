@@ -10,6 +10,10 @@
 #include "fonts/rismol_5_7.h"
 #include "fonts/font4x6.h"
 
+extern "C" {
+#include "micro_config.h"
+}
+
 #include "chipbox_pin.h"
 
 #include <fami32_icon.h>
@@ -64,6 +68,8 @@ uint8_t g_octv = 3;
 bool touch_note = true;
 
 bool edit_mode = false;
+
+bool setting_change = false;
 
 const char ch_name[5][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"
@@ -520,10 +526,92 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
     }
 }
 
+int fullScreenMenu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), int8_t initPos) {
+    display.setTextColor(1);
+
+    int8_t menuPos = initPos;
+    int8_t pageStart = 0;
+    const uint8_t itemsPerPage = 7;
+
+    for (;;) {
+        display.clearDisplay();
+
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setFont(&rismol57);
+        display.setTextColor(0);
+        display.setCursor(1, 1);
+        display.print(name);
+        display.setTextColor(1);
+        display.setFont(&rismol35);
+
+        if (menuPos < pageStart) {
+            pageStart = menuPos;
+        } else if (menuPos >= pageStart + itemsPerPage) {
+            pageStart = menuPos - itemsPerPage + 1;
+        }
+
+        uint8_t pageEnd = (pageStart + itemsPerPage > maxMenuPos + 1) ? maxMenuPos + 1 : pageStart + itemsPerPage;
+
+        for (uint8_t i = pageStart; i < pageEnd; i++) {
+            uint8_t displayIndex = i - pageStart;
+            uint16_t itemYPos = 10 + (displayIndex * 8);
+
+            if (i == menuPos) {
+                display.fillRect(0, itemYPos + 1, 128, 7, SSD1306_WHITE);
+                display.setTextColor(SSD1306_BLACK);
+                display.setCursor(4, itemYPos + 2);
+            } else {
+                display.setTextColor(SSD1306_WHITE);
+                display.setCursor(3, itemYPos + 2);
+            }
+
+            if (i >= maxMenuPos) {
+                display.print("EXIT");
+            } else {
+                display.print(menuStr[i]);
+            }
+        }
+
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (menuPos >= maxMenuPos) {
+                        return -1;
+                    }
+                    if (menuFunc != nullptr && menuFunc[menuPos] != nullptr) {
+                        menuFunc[menuPos]();
+                    } else {
+                        return menuPos;
+                    }
+                } else if (e.bit.KEY == KEY_BACK) {
+                    return -1;
+                } else if (e.bit.KEY == KEY_UP) {
+                    menuPos--;
+                    if (menuPos < 0) {
+                        menuPos = maxMenuPos;
+                        pageStart = (maxMenuPos / itemsPerPage) * itemsPerPage;
+                    }
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    menuPos++;
+                    if (menuPos > maxMenuPos) {
+                        menuPos = 0;
+                        pageStart = 0;
+                    }
+                }
+            }
+        }
+
+        vTaskDelay(4);
+    }
+}
+
 int num_set_menu_int(const char* name, int min, int max, int count, int *num, int x, int y, int width, int height) {
     if (x == 0) x = (128 - width) / 2;
     if (y == 0) y = (64 - height) / 2;
-    float numCount = (float)(width - 4) / max;
+    float numCount = (float)(width - 4) / (max - min);
 
     display.drawRect(x - 1, y - 1, width + 2, height + 2, 0);
     
@@ -543,7 +631,7 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
         display.setFont(&rismol35);
 
         display.drawRect(x + 2, (y + height) - 10, width - 4, 8, 1);
-        display.fillRect(x + 2, (y + height) - 10, *num * numCount, 8, 1);
+        display.fillRect(x + 2, (y + height) - 10, (*num - min) * numCount, 8, 1);
 
         display.display();
 
@@ -672,6 +760,62 @@ void channel_setting_page() {
     }
 }
 
+void samp_rate_set() {
+    num_set_menu_int("SAMPLE RATE", 10800, 192000, 6000, &SAMP_RATE, 0, 0, 128, 32);
+    setting_change = true;
+    if (set_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE) == CONFIG_SUCCESS) {
+        printf("Updated 'SAMPLE_RATE' to %d\n", SAMP_RATE);
+    }
+}
+
+void eng_speed_set() {
+    num_set_menu_int("ENGINE SPEED", 1, 120, 1, &ENG_SPEED, 0, 0, 128, 32);
+    setting_change = true;
+    if (set_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED) == CONFIG_SUCCESS) {
+        printf("Updated 'ENGINE_SPEED' to %d\n", ENG_SPEED);
+    }
+}
+
+void low_pass_set() {
+    num_set_menu_int("LOW PASS", 1000, SAMP_RATE / 2, 1000, &LPF_CUTOFF, 0, 0, 128, 32);
+    setting_change = true;
+    if (set_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF) == CONFIG_SUCCESS) {
+        printf("Updated 'LPF_CUTOFF' to %d\n", LPF_CUTOFF);
+    }
+}
+
+void high_pass_set() {
+    num_set_menu_int("HIGH PASS", 0, 1000, 10, &HPF_CUTOFF, 0, 0, 128, 32);
+    setting_change = true;
+    if (set_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF) == CONFIG_SUCCESS) {
+        printf("Updated 'HPF_CUTOFF' to %d\n", HPF_CUTOFF);
+    }
+}
+
+void finetune_set() {
+    num_set_menu_int("FINETUNE", 400, 500, 1, &BASE_FREQ_HZ, 0, 0, 128, 32);
+    if (set_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
+        printf("Updated 'BASE_FREQ_HZ' to %d\n", BASE_FREQ_HZ);
+    }
+}
+
+void settings_page() {
+    const char *menu_str[5] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE"};
+    void (*menuFunc[5])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set};
+    fullScreenMenu("SETTINGS", menu_str, 5, menuFunc, 0);
+    display.setFont(&rismol57);
+    drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
+    display.display();
+    write_config(config_path);
+    if (setting_change) {
+        drawPopupBox("Requires reboot\nto apply changes.", 0, 0, 0, 0);
+        display.display();
+        vTaskDelay(1024);
+        esp_restart();
+    }
+    display.setFont(&rismol35);
+}
+
 void main_option_page() {
     drawPinstript(0, 0, 128, 64);
     const char *menu_str[5] = {edit_mode ? "STOP EDIT" : "START EDIT", 
@@ -694,6 +838,10 @@ void main_option_page() {
 
     case 3:
         menu_file();
+        break;
+
+    case 4:
+        settings_page();
         break;
 
     default:
@@ -1621,6 +1769,107 @@ void instrument_menu() {
     }
 }
 
+void osc_menu() {
+    for (;;) {
+        display.clearDisplay();
+        display.setCursor(2, 0);
+        display.print("R");
+        display.setCursor(14, 0);
+        display.print("PU1   PU2   TRI   NOS   DMC");
+        display.drawFastHLine(0, 6, 128, 1);
+        display.setCursor(0, 11);
+        display.drawFastHLine(0, 10, 128, 1);
+        drawChessboard(0, 7, 7, 3);
+
+        for (int c = 0; c < 5; c++) {
+            if (player.get_mute(c))
+                drawChessboard((c * 24) + 8, 7, 23, 3);
+
+            display.fillRect((c * 24) + 8, 7, roundf(player.channel[c].get_rel_vol() * (23.0f/225.0f)), 3, 1);
+        }
+        for (int r = -4; r < 5; r++) {
+            if (r) {
+                display.setTextColor(1);
+            } else {
+                display.fillRect(0, display.getCursorY() - 1, 7, 7, 1);
+                display.setTextColor(0);
+            }
+            if (((player.get_row() + r) >= 0) && ((player.get_row() + r) < ftm.fr_block.pat_length)) {
+                display.printf("%02X", player.get_row() + r);
+            }
+            display.printf("\n");
+        }
+        display.drawFastVLine(7, 0, 64, 1);
+        for (int i = 0; i < 5; i++) {
+            display.drawFastVLine((i * 24) + 31, 0, 64, 1);
+            if (i == channel_sel_pos) {
+                display.setCursor((i * 24) + 9, 0);
+                display.print(">");
+                if (edit_mode) {
+                    invertRect((i * 24) + 8, 0, 23, 6);
+                }
+            }
+        }
+
+        for (int i = 0; i < 5; i++) {
+            int draw_base = (i * 24) + 19;
+            // display.drawFastVLine((i * 24) + 19, 11, 53, 1);
+            for (int y = 11; y < 63; y++) {
+                int p1 = draw_base + (player.channel[i].get_buf()[y * 4] / 170);
+                int p2 = draw_base + (player.channel[i].get_buf()[(y + 1) * 4] / 170);
+                display.drawLine(p1, y, p2, y + 1, 1);
+            }
+        }
+
+        display.display();
+
+        // KEYPAD
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (player.get_play_status()) {
+                        pause_sound();
+                    } else {
+                        start_sound();
+                    }
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    menu_navi();
+                    break;
+                } else if (e.bit.KEY == KEY_MENU) {
+                    main_option_page();
+                } else if (e.bit.KEY == KEY_P) {
+                    player.jmp_to_frame(player.get_frame() + 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_S) {
+                    player.jmp_to_frame(player.get_frame() - 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_UP) {
+                    player.set_row(player.get_row() - 1);
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_L) {
+                    set_channel_sel_pos(channel_sel_pos - 1);
+                } else if (e.bit.KEY == KEY_R) {
+                    set_channel_sel_pos(channel_sel_pos + 1);
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
+                }
+            }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
+        }
+
+        vTaskDelay(4);
+    }
+}
+
 void gui_task(void *arg) {
     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
     for(;;) {
@@ -1642,6 +1891,10 @@ void gui_task(void *arg) {
             instrument_menu();
             break;
         
+        case 4:
+            osc_menu();
+            break;
+
         default:
             break;
         }

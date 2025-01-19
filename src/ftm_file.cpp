@@ -97,7 +97,7 @@ void FTM_FILE::remove_inst(int n) {
 int FTM_FILE::open_ftm(const char *filename) {
     ftm_file = fopen(filename, "rb+");
     if (ftm_file == NULL) {
-        DBG_PRINTF("Error opening file: %s\n", strerror(errno));
+        perror("Error opening file");
         return -1;
     }
     fread(&header, sizeof(header), 1, ftm_file);

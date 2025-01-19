@@ -16,6 +16,7 @@ bool _debug_print = false;
 
 extern "C" {
 #include "ls.h"
+#include "micro_config.h"
 }
 
 FAMI_PLAYER player;
@@ -97,8 +98,8 @@ void sound_task(void *arg) {
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
         sound_task_stat = false;
-        // serial_audio(player.get_buf(), player.get_buf_size());
         vTaskDelay(1);
+        // serial_audio(player.get_buf(), player.get_buf_size());
     }
 }
 
@@ -126,7 +127,7 @@ void format_fs(int argc, const char* argv[]) {
     esp_vfs_fat_spiflash_format_rw_wl("/flash", "spiffs");
 }
 
-extern float BASE_FREQ_HZ;
+extern int BASE_FREQ_HZ;
 
 void set_base_freq_cmd(int argc, const char* argv[]) {
     if (argc < 2) {
@@ -188,11 +189,51 @@ void setup() {
     wl_handle_t wl_handle;
     esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "spiffs", &fat_conf, &wl_handle);
     printf("\nFATFS mount %d: %s\n", ret, esp_err_to_name(ret));
-    vTaskDelay(64);
-    xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
-    xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 5, &SOUND_TASK_HD);
+
+    if (read_config(config_path) != CONFIG_SUCCESS) {
+        printf("NO CONFIG FILE FOUND.\nCREATE IT...\n");
+        if (set_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE) == CONFIG_SUCCESS) {
+            printf("Updated 'SAMPLE_RATE' to %d\n", SAMP_RATE);
+        }
+        if (set_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED) == CONFIG_SUCCESS) {
+            printf("Updated 'ENG_SPEED' to %d\n", ENG_SPEED);
+        }
+        if (set_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF) == CONFIG_SUCCESS) {
+            printf("Updated 'LPF_CUTOFF' to %d\n", LPF_CUTOFF);
+        }
+        if (set_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF) == CONFIG_SUCCESS) {
+            printf("Updated 'HPF_CUTOFF' to %d\n", HPF_CUTOFF);
+        }
+        if (set_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
+            printf("Updated 'BASE_FREQ_HZ' to %d\n", BASE_FREQ_HZ);
+        }
+        if (write_config(config_path) != CONFIG_SUCCESS) {
+            printf("Failed to write config file.\n");
+        }
+        esp_restart();
+    }
+
+    if (get_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE) == CONFIG_SUCCESS) {
+        printf("SAMPLE_RATE: %d\n", SAMP_RATE);
+    }
+    if (get_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED) == CONFIG_SUCCESS) {
+        printf("ENG_SPEED: %d\n", ENG_SPEED);
+    }
+    if (get_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF) == CONFIG_SUCCESS) {
+        printf("LPF_CUTOFF: %d\n", LPF_CUTOFF);
+    }
+    if (get_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF) == CONFIG_SUCCESS) {
+        printf("HPF_CUTOFF: %d\n", HPF_CUTOFF);
+    }
+    if (get_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
+        printf("BASE_FREQ_HZ: %d\n", BASE_FREQ_HZ);
+    }
+
+    xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 8, &SOUND_TASK_HD);
     xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 2, NULL);
-    xTaskCreate(gui_task, "GUI", 10240, NULL, 3, NULL); // &OSC_TASK);
+    xTaskCreate(gui_task, "GUI", 20480, NULL, 3, NULL); // &OSC_TASK);
+    vTaskDelay(128);
+    xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
 }
 
 void loop() {

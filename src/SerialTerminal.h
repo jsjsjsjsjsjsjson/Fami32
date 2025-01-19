@@ -22,34 +22,31 @@ public:
         Serial0.begin(baudRate);
         strncpy(prompt, termPrompt, 31);
         Serial0.println("Serial Terminal Started");
-        Serial0.printf("%s %s\n", __DATE__, __TIME__);
+        Serial0.printf("%s %s\r\n", __DATE__, __TIME__);
         printPrompt();
-        // 添加内置的帮助命令
         addCommand("help", helpCmd);
     }
 
     void update() {
-        // 读取串口输入
         if (Serial0.available() > 0) {
             char c = Serial0.read();
 
-            if (c == 127) { // 处理退格键
+            if (c == 127) {
                 if (cmdBufferIndex > 0) {
                     cmdBufferIndex--;
-                    Serial0.print("\b \b"); // 光标左移一位并覆盖字符
+                    Serial0.print("\b \b");
                 }
-            } else if (c == '\n' || c == '\r') { // 处理换行符
+            } else if (c == '\n' || c == '\r') {
                 if (cmdBufferIndex > 0) {
                     cmdBuffer[cmdBufferIndex] = '\0';
-                    Serial0.println(); // 回显换行
+                    Serial0.println();
                     executeCommand(cmdBuffer);
                     cmdBufferIndex = 0;
                 } else {
-                    Serial0.println(); // 直接回车时换行
+                    Serial0.println();
                 }
-                printPrompt(); // 打印提示行
+                printPrompt();
             } else if (cmdBufferIndex < CMD_BUF_SIZE - 1) {
-                // 记录命令字符并回显
                 cmdBuffer[cmdBufferIndex++] = c;
                 Serial0.print(c);
             }
@@ -110,7 +107,6 @@ private:
     int cmdListSize;
 };
 
-// 定义静态成员变量
 SerialTerminal* SerialTerminal::instance = nullptr;
 
 #endif

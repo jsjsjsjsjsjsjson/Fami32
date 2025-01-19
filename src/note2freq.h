@@ -136,7 +136,7 @@ const float note2period_table[128] = {
 };
 
 #define FCPU_HZ 1789773.0f
-float BASE_FREQ_HZ = 440.0f;
+int BASE_FREQ_HZ = 440;
 
 float note2period(uint8_t midi_note) {
     // return note2period_table[midi_note & 127];
