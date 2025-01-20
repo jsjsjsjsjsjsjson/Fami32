@@ -13,7 +13,7 @@ extern "C" {
 }
 
 typedef struct __attribute__((packed)) {
-    char id[18];
+    char id[18] = {'F','a','m','i','T','r','a','c','k','e','r',' ','M','o','d','u','l','e'};
     uint16_t version = 0x0440;
     uint16_t recv = 0;
 } FTM_HEADER;
@@ -29,7 +29,7 @@ typedef struct __attribute__((packed)) {
     uint32_t v_style = 1;
     uint32_t hl1 = 4;
     uint32_t hl2 = 16;
-    uint32_t s_split = 0x15; // ?
+    uint32_t s_split = 0x20; // ?
 } PARAMS_BLOCK;
 
 typedef struct __attribute__((packed)) {
@@ -49,9 +49,9 @@ typedef struct {
 typedef struct __attribute__((packed)) {
     char id[16] = "HEADER";
     uint32_t version = 3;
-    uint32_t size;
-    uint8_t track_num = 1;
-    char name[64];
+    uint32_t size = 20;
+    uint8_t track_num = 0;
+    char name[64] = "_FAMI32_";
     uint8_t ch_id[8] = {0, 1, 2, 3, 4, 5, 6, 7};
     uint8_t ch_fx[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 } HEADER_BLOCK;
@@ -89,7 +89,7 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     char id[16] = "DPCM SAMPLES";
     uint32_t version = 1;
-    uint32_t size;
+    uint32_t size = 1;
     uint16_t sample_num = 0;
 } DPCM_SAMPLE_BLOCK;
 
@@ -102,10 +102,10 @@ typedef struct {
 } dpcm_sample_t;
 
 typedef struct __attribute__((packed)) {
-    uint8_t index;
-    uint8_t pitch : 4;
-    uint8_t loop : 4;
-    uint8_t d_counte;
+    uint8_t index = 0;
+    uint8_t pitch : 4 = 0;
+    uint8_t loop : 4 = 0;
+    uint8_t d_counte = 0xff;
 } dpcm_t;
 
 typedef struct {
@@ -115,12 +115,12 @@ typedef struct {
 
 typedef struct __attribute__((packed)) {
     uint32_t index = 0;
-    uint8_t type = 0;
+    uint8_t type = 1;
     uint32_t seq_count = 5;
     seq_index_t seq_index[5] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
     dpcm_t dpcm[96];
-    uint32_t name_len = 16;
-    char name[64] = "EMPTY INSTRUMENT";
+    uint32_t name_len = 14;
+    char name[64] = "New instrument";
 } instrument_t;
 
 typedef struct __attribute__((packed)) {
@@ -247,26 +247,38 @@ public:
     void remove_inst(int n);
 
     int open_ftm(const char *filename);
+    int save_ftm(const char *filename);
+
+    void write_file_header();
 
     void read_param_block();
+    void write_param_block();
     void read_info_block();
+    void write_info_block();
 
     void read_header_block();
+    void write_header_block();
 
     void read_instrument_block();
+    void write_instrument_block();
     void read_instrument_data();
+    void write_instrument_data();
 
     void read_sequences_block();
     void read_sequences_data();
+    void write_sequences();
 
     void read_frame_block();
     void read_frame_data();
+    void write_frame();
 
     void read_pattern_block();
     void read_pattern_data();
+    void write_pattern();
 
     void read_dpcm_block();
     void read_dpcm_data();
+    void write_dpcm();
 
     unpk_item_t get_pt_item(uint8_t c, uint8_t i, uint32_t r);
     void set_pt_item(uint8_t c, uint8_t i, uint32_t r, unpk_item_t item);

@@ -672,7 +672,7 @@ public:
             }
             sample_loop = inst_proc.get_inst()->dpcm[note - 24].loop;
             sample_pitch = inst_proc.get_inst()->dpcm[note - 24].pitch;
-            sample_len = ftm_data->dpcm_samples[sample_num].sample_size_byte * 8;
+            sample_len = (ftm_data->dpcm_samples[sample_num].sample_size_byte + 1) * 8;
             DBG_PRINTF("DPCM_CHANNEL: SET NUM->%d, PITCH->%d, LOOP->%d, SMP_LEN->%d\n", sample_num, sample_pitch, sample_loop, sample_len);
             sample_pos = 0;
         }

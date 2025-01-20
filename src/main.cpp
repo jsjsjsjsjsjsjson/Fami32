@@ -169,7 +169,6 @@ void shell(void *arg) {
 }
 
 void keypad_task(void *arg) {
-    keypad.begin();
     touchKeypad.begin();
     for (;;) {
         keypad.tick();
@@ -178,19 +177,56 @@ void keypad_task(void *arg) {
     }
 }
 
+void set_brigness(uint8_t var) {
+    display.ssd1306_command(SSD1306_SETCONTRAST);
+    display.ssd1306_command(var);
+}
+
+const uint8_t bayerMatrix[4][4] = {
+    {  0, 128,  32, 160 },
+    { 192,  64, 224,  96 },
+    {  48, 176,  16, 144 },
+    { 240, 112, 208,  80 }
+};
+
 void setup() {
     SPI.begin(DISPLAY_SCL, -1, DISPLAY_SDA);
     display.begin();
+    display.clearDisplay();
     display.display();
+
+    vTaskDelay(200);
+
+    for (int i = 0; i < 32; i++) {
+        display.fillScreen(1);
+        display.drawBitmap(48, 0, fami32_logo, 32, 32, 0);
+        display.setTextColor(0);
+        display.setFont(&rismol57);
+        display.setCursor(47, 33);
+        display.print("FAMI32");
+        display.setFont(&rismol35);
+        display.setCursor(0, 47);
+        display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
+        for (int x = 0; x < 128; x++) {
+            for (int y = 0; y < 64; y++) {
+                display.drawPixel(x, y, (display.getPixel(x, y) * (i * 8)) > bayerMatrix[y & 3][x & 3]);
+            }
+        }
+        display.display();
+    }
+
     esp_vfs_fat_mount_config_t fat_conf = {
         .format_if_mount_failed = true,
-        .max_files = 4
+        .max_files = 1
     };
     wl_handle_t wl_handle;
     esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "spiffs", &fat_conf, &wl_handle);
     printf("\nFATFS mount %d: %s\n", ret, esp_err_to_name(ret));
 
     if (read_config(config_path) != CONFIG_SUCCESS) {
+        display.setCursor(0, 59);
+        display.printf("Create new config...");
+        display.display();
         printf("NO CONFIG FILE FOUND.\nCREATE IT...\n");
         if (set_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE) == CONFIG_SUCCESS) {
             printf("Updated 'SAMPLE_RATE' to %d\n", SAMP_RATE);
@@ -229,10 +265,43 @@ void setup() {
         printf("BASE_FREQ_HZ: %d\n", BASE_FREQ_HZ);
     }
 
+    display.setCursor(0, 59);
+    display.printf("Press any key to continue...");
+    display.display();
+
+    keypad.begin();
+
+    while (!keypad.available()) {
+        keypad.tick();
+        vTaskDelay(32);
+    }
+    keypad.read();
+
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 8, &SOUND_TASK_HD);
     xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 2, NULL);
+
+    for (int i = 16; i > 0; i--) {
+        display.fillScreen(1);
+        display.drawBitmap(48, 0, fami32_logo, 32, 32, 0);
+        display.setTextColor(0);
+        display.setFont(&rismol57);
+        display.setCursor(47, 33);
+        display.print("FAMI32");
+        display.setFont(&rismol35);
+        display.setCursor(0, 47);
+        display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
+        for (int x = 0; x < 128; x++) {
+            for (int y = 0; y < 64; y++) {
+                display.drawPixel(x, y, (display.getPixel(x, y) * (i * 16)) > bayerMatrix[y & 3][x & 3]);
+            }
+        }
+        display.display();
+    }
+
+    display.setFont(&rismol35);
+    display.setTextColor(1);
+
     xTaskCreate(gui_task, "GUI", 20480, NULL, 3, NULL); // &OSC_TASK);
-    vTaskDelay(128);
     xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
 }
 

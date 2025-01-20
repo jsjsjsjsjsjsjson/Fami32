@@ -95,7 +95,7 @@ void FTM_FILE::remove_inst(int n) {
 }
 
 int FTM_FILE::open_ftm(const char *filename) {
-    ftm_file = fopen(filename, "rb+");
+    ftm_file = fopen(filename, "rb");
     if (ftm_file == NULL) {
         perror("Error opening file");
         return -1;
@@ -117,6 +117,49 @@ int FTM_FILE::open_ftm(const char *filename) {
     DBG_PRINTF("\nOpen %.18s\n", header.id);
     DBG_PRINTF("VERSION: 0x%X\n", header.version);
     return 0;
+}
+
+int FTM_FILE::save_ftm(const char *filename) {
+    ftm_file = fopen(filename, "wb");
+
+    if (ftm_file == NULL) {
+        perror("Error opening file");
+        return -1;
+    }
+
+    fseek(ftm_file, 0, SEEK_SET);
+
+    write_file_header();
+    write_param_block();
+
+    write_info_block();
+
+    write_header_block();
+    write_instrument_block();
+    write_instrument_data();
+
+    write_sequences();
+
+    write_frame();
+
+    write_pattern();
+
+    write_dpcm();
+
+    fwrite("\0END", 1, 4, ftm_file);
+
+    fclose(ftm_file);
+
+    return 0;
+}
+
+void FTM_FILE::write_file_header() {
+    fwrite(&header, sizeof(header), 1, ftm_file);
+}
+
+void FTM_FILE::write_param_block() {
+    pr_block.size = 29;
+    fwrite(&pr_block, 1, sizeof(pr_block), ftm_file);
 }
 
 void FTM_FILE::read_param_block() {
@@ -145,11 +188,16 @@ void FTM_FILE::read_info_block() {
     DBG_PRINTF("COPYRIGHT: %s\n", nf_block.copyright);
 }
 
+void FTM_FILE::write_info_block() {
+    nf_block.size = 96;
+    fwrite(&nf_block, 1, sizeof(nf_block), ftm_file);
+}
+
 void FTM_FILE::read_header_block() {
     fread(&he_block, 1, 25, ftm_file);
 
     fread(&he_block.name, 1, he_block.size - (pr_block.channel * 2) - 1, ftm_file);
-    if (he_block.track_num > 1) {
+    if (he_block.track_num > 0) {
         DBG_PRINTF("Multi-track FTM files are not supported\n");
         return;
     }
@@ -171,12 +219,34 @@ void FTM_FILE::read_header_block() {
     DBG_PRINTF("\n");
 }
 
+void FTM_FILE::write_header_block() {
+    he_block.size = 20;
+    fwrite(&he_block, 1, 25, ftm_file);
+    strcpy(he_block.name, "_FAMI32_");
+    fwrite(he_block.name, 1, 9, ftm_file);
+
+    for (int i = 0; i < pr_block.channel; i++) {
+        fwrite(&he_block.ch_id[i], 1, 1, ftm_file);
+        fwrite(&he_block.ch_fx[i], 1, 1, ftm_file);
+    }
+}
+
 void FTM_FILE::read_instrument_block() {
     fread(&inst_block, 1, sizeof(inst_block), ftm_file);
     DBG_PRINTF("\nINSTRUMENT HEADER: %s\n", inst_block.id);
     DBG_PRINTF("VERSION: %d\n", inst_block.version);
     DBG_PRINTF("SIZE: %d\n", inst_block.size);
     DBG_PRINTF("NUM_INST: 0x%X\n", inst_block.inst_num);
+}
+
+void FTM_FILE::write_instrument_block() {
+    size_t tol_size = 4;
+    for (int i = 0; i < inst_block.inst_num; i++) {
+        tol_size += 311 + instrument[i].name_len;
+    }
+    printf("WRITE SIZE=%d\n", tol_size);
+    inst_block.size = tol_size;
+    fwrite(&inst_block, 1, sizeof(inst_block), ftm_file);
 }
 
 void FTM_FILE::read_instrument_data() {
@@ -186,14 +256,8 @@ void FTM_FILE::read_instrument_data() {
         instrument_t inst_tmp;
         DBG_PRINTF("\nREADING INSTRUMENT #%02X...\n", i);
         fread(&inst_tmp, sizeof(instrument_t) - 64, 1, ftm_file);
-        fread(&inst_tmp.name, inst_tmp.name_len, 1, ftm_file);
+        fread(inst_tmp.name, inst_tmp.name_len, 1, ftm_file);
         inst_tmp.name[inst_tmp.name_len] = '\0';
-        if (inst_tmp.index >= instrument.size()) {
-            instrument.resize(inst_tmp.index + 1);
-            instrument[inst_tmp.index] = inst_tmp;
-        } else {
-            instrument[inst_tmp.index] = inst_tmp;
-        }
         DBG_PRINTF("%02X->NAME: %s\n", inst_tmp.index, inst_tmp.name);
         DBG_PRINTF("TYPE: 0x%X\n", inst_tmp.type);
         DBG_PRINTF("SEQU COUNT: %d\n", inst_tmp.seq_count);
@@ -204,8 +268,22 @@ void FTM_FILE::read_instrument_data() {
         DBG_PRINTF("HIP: %d %d\n", inst_tmp.seq_index[3].enable, inst_tmp.seq_index[3].seq_index);
         DBG_PRINTF("DTY: %d %d\n", inst_tmp.seq_index[4].enable, inst_tmp.seq_index[4].seq_index);
         DBG_PRINTF("\n");
+        if (inst_tmp.index >= instrument.size()) {
+            instrument.resize(inst_tmp.index + 1);
+            instrument[inst_tmp.index] = inst_tmp;
+        } else {
+            instrument[inst_tmp.index] = inst_tmp;
+        }
     }
     inst_block.inst_num = instrument.size();
+}
+
+void FTM_FILE::write_instrument_data() {
+    for (int i = 0; i < inst_block.inst_num; i++) {
+        printf("WRITE INSTRUMENT: %d\n", instrument[i].index);
+        fwrite(&instrument[i], sizeof(instrument_t) - 64, 1, ftm_file);
+        fwrite(instrument[i].name, instrument[i].name_len, 1, ftm_file);
+    }
 }
 
 void FTM_FILE::read_sequences_block() {
@@ -222,6 +300,39 @@ void FTM_FILE::read_sequences_block() {
     DBG_PRINTF("VERSION: %d\n", seq_block.version);
     DBG_PRINTF("SIZE: %d\n", seq_block.size);
     DBG_PRINTF("NUM_SEQU: %d\n", seq_block.sequ_num);
+}
+
+void FTM_FILE::write_sequences() {
+    size_t block_start_addr = ftell(ftm_file);
+    int sequ_num = 0;
+    fwrite(&seq_block, 1, sizeof(seq_block), ftm_file);
+
+    size_t tol_size = 4;
+    for (int type = 0; type < 5; type++) {
+        for (int i = 0; i < sequences[type].size(); i++) {
+            if (sequences[type][i].length) {
+                fwrite(&sequences[type][i], 13, 1, ftm_file);
+                fwrite(sequences[type][i].data.data(), 1, sequences[type][i].length, ftm_file);
+                tol_size += 13 + sequences[type][i].length;
+                sequ_num++;
+            }
+        }
+    }
+    for (int type = 0; type < 5; type++) {
+        for (int i = 0; i < sequences[type].size(); i++) {
+            if (sequences[type][i].length) {
+                fwrite(&sequences[type][i].release, sizeof(uint32_t), 1, ftm_file);
+                fwrite(&sequences[type][i].setting, sizeof(uint32_t), 1, ftm_file);
+                tol_size += 4 * 2;
+            }
+        }
+    }
+    size_t block_end_addr = ftell(ftm_file);
+    seq_block.size = tol_size;
+    seq_block.sequ_num = sequ_num;
+    fseek(ftm_file, block_start_addr, SEEK_SET);
+    fwrite(&seq_block, 1, sizeof(seq_block), ftm_file);
+    fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 
 void FTM_FILE::read_sequences_data() {
@@ -326,13 +437,24 @@ void FTM_FILE::read_frame_data() {
     for (int i = 0; i < fr_block.frame_num; i++) {
         std::vector<uint8_t> fr_tmp;
         fr_tmp.resize(pr_block.channel);
-        fread(fr_tmp.data(), pr_block.channel, 1, ftm_file);
+        fread(fr_tmp.data(), 1, pr_block.channel, ftm_file);
         frames.push_back(fr_tmp);
         DBG_PRINTF("#%02X: ", i);
         for (int c = 0; c < pr_block.channel; c++) {
             DBG_PRINTF("%02X ", frames[i][c]);
         }
         DBG_PRINTF("\n");
+    }
+}
+
+void FTM_FILE::write_frame() {
+    fr_block.size = (fr_block.frame_num * pr_block.channel) + 16;
+    printf("WRITE FRAME: %d\n", fr_block.frame_num);
+    fwrite(&fr_block, sizeof(FRAME_BLOCK), 1, ftm_file);
+
+    for (int f = 0; f < fr_block.frame_num; f++) {
+        fwrite(frames[f].data(), 1, pr_block.channel, ftm_file);
+        printf("FTELL: %d\n", ftell(ftm_file));
     }
 }
 
@@ -353,11 +475,11 @@ void FTM_FILE::read_pattern_data() {
     while (ftell(ftm_file) < pt_end) {
         pattern_t pt_tmp;
         fread(&pt_tmp, 4, 4, ftm_file);
-        // DBG_PRINTF("\n#%d\n", count);
-        // DBG_PRINTF("TRACK: %d\n", pt_tmp.track);
-        // DBG_PRINTF("CHANNEL: %d\n", pt_tmp.channel);
-        // DBG_PRINTF("INDEX: %d\n", pt_tmp.index);
-        // DBG_PRINTF("ITEMS: %d\n", pt_tmp.items);
+        DBG_PRINTF("\n#%d\n", count);
+        DBG_PRINTF("TRACK: %d\n", pt_tmp.track);
+        DBG_PRINTF("CHANNEL: %d\n", pt_tmp.channel);
+        DBG_PRINTF("INDEX: %d\n", pt_tmp.index);
+        DBG_PRINTF("ITEMS: %d\n", pt_tmp.items);
         pt_tmp.item.resize(pt_tmp.items);
         int item_size = 10 + 2 * he_block.ch_fx[pt_tmp.channel];
         for (int i = 0; i < pt_tmp.items; i++) {
@@ -383,9 +505,72 @@ void FTM_FILE::read_pattern_data() {
             memcpy(unpack_pt[pt_tmp.channel][pt_tmp.index][pt_tmp.item[y].row].fxdata, pt_tmp.item[y].fxdata, 8);
         }
         count++;
-        // DBG_PRINTF("SECCESS.\n");
+        DBG_PRINTF("SECCESS.\n");
     }
     pattern_num = count;
+}
+
+void FTM_FILE::write_pattern() {
+    size_t block_start_addr = ftell(ftm_file);
+    fwrite(&pt_block, sizeof(PATTERN_BLOCK), 1, ftm_file);
+    
+    patterns.clear();
+    patterns.resize(pr_block.channel);
+
+    for (int c = 0; c < unpack_pt.size(); c++) {
+        for (int i = 0; i < unpack_pt[c].size(); i++) {
+            pattern_t pattern_tmp;
+            pattern_tmp.track = 0;
+            pattern_tmp.items = 0;
+            pattern_tmp.channel = c;
+            pattern_tmp.index = i;
+            for (int r = 0; r < unpack_pt[c][i].size(); r++) {
+                unpk_item_t pt_tmp = unpack_pt[c][i][r];
+                if ((pt_tmp.note != NO_NOTE) ||
+                    (pt_tmp.instrument != NO_INST) ||
+                    (pt_tmp.volume != NO_VOL) ||
+                    (pt_tmp.fxdata[0].fx_cmd) ||
+                    (pt_tmp.fxdata[1].fx_cmd) ||
+                    (pt_tmp.fxdata[2].fx_cmd) ||
+                    (pt_tmp.fxdata[3].fx_cmd)) {
+                    ft_item_t ft_tmp;
+                    ft_tmp.row = r;
+                    ft_tmp.note = pt_tmp.note;
+                    ft_tmp.octave = pt_tmp.octave;
+                    ft_tmp.instrument = pt_tmp.instrument;
+                    ft_tmp.volume = pt_tmp.volume;
+                    memcpy(ft_tmp.fxdata, pt_tmp.fxdata, 8);
+                    pattern_tmp.item.push_back(ft_tmp);
+                    pattern_tmp.items++;
+                }
+            }
+            if (pattern_tmp.items) {
+                patterns[c].push_back(pattern_tmp);
+            }
+        }
+    }
+
+    size_t tol_size = 0;
+
+    for (int c = 0; c < patterns.size(); c++) {
+        int item_size = 10 + 2 * he_block.ch_fx[c];
+        for (int i = 0; i < patterns[c].size(); i++) {
+            fwrite(&patterns[c][i], 4, 4, ftm_file);
+            tol_size += 4 * 4;
+            for (int item = 0; item < patterns[c][i].item.size(); item++) {
+                fwrite(&patterns[c][i].item[item], 1, item_size, ftm_file);
+                tol_size += item_size;
+            }
+        }
+    }
+
+    size_t block_end_addr = ftell(ftm_file);
+
+    pt_block.size = tol_size;
+
+    fseek(ftm_file, block_start_addr, SEEK_SET);
+    fwrite(&pt_block, sizeof(PATTERN_BLOCK), 1, ftm_file);
+    fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 
 unpk_item_t FTM_FILE::get_pt_item(uint8_t c, uint8_t i, uint32_t r) {
@@ -434,17 +619,42 @@ void FTM_FILE::read_dpcm_data() {
         fread(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
         DBG_PRINTF("NAME(SIZE=%d): %s\n", dpcm_samples[i].name_len, dpcm_samples[i].name);
         fread(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
-        dpcm_samples[i].dpcm_data.resize(dpcm_samples[i].sample_size_byte);
+        dpcm_samples[i].dpcm_data.resize(dpcm_samples[i].sample_size_byte + 1);
         // DBG_PRINTF("FTELL: %d\n", ftell(ftm_file));
-        fread(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte, ftm_file);
+        fread(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte + 1, ftm_file);
         DBG_PRINTF("SAMPLE SIZE(byte) = %d\n", dpcm_samples[i].sample_size_byte);
         DBG_PRINTF("DECODE...\n");
-        dpcm_samples[i].pcm_data.resize(dpcm_samples[i].sample_size_byte * 8);
-        decode_dpcm(dpcm_samples[i].dpcm_data.data(), dpcm_samples[i].sample_size_byte, dpcm_samples[i].pcm_data.data());
-        fseek(ftm_file, 1, SEEK_CUR);
+        dpcm_samples[i].pcm_data.resize((dpcm_samples[i].sample_size_byte + 1) * 8);
+        decode_dpcm(dpcm_samples[i].dpcm_data.data(), dpcm_samples[i].sample_size_byte + 1, dpcm_samples[i].pcm_data.data());
         // DBG_PRINTF("FTELL: %d\n", ftell(ftm_file));
         DBG_PRINTF("SECCESS.\n");
     }
+}
+
+void FTM_FILE::write_dpcm() {
+    size_t block_start_addr = ftell(ftm_file);
+    fwrite(&dpcm_block, sizeof(DPCM_SAMPLE_BLOCK), 1, ftm_file);
+
+    const uint8_t zero = 0;
+    
+    if (dpcm_block.sample_num == 0) {
+        return;
+    }
+    
+    size_t tol_size = 2;
+    for (int i = 0; i < dpcm_samples.size(); i++) {
+        fwrite(&dpcm_samples[i].name_len, 4, 1, ftm_file);
+        fwrite(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
+        fwrite(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
+        fwrite(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte + 1, ftm_file);
+        tol_size += 4 + dpcm_samples[i].name_len + 4 + dpcm_samples[i].sample_size_byte + 1;
+    }
+
+    size_t block_end_addr = ftell(ftm_file);
+
+    fseek(ftm_file, block_start_addr, SEEK_SET);
+    fwrite(&dpcm_block, sizeof(DPCM_SAMPLE_BLOCK), 1, ftm_file);
+    fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 
 void FTM_FILE::print_frame_data(int index) {

@@ -237,6 +237,7 @@ void drawPopupBox(const char* message, uint16_t width, uint16_t height, uint16_t
         y = (64 - height) / 2;
     }
 
+    display.drawRect(x - 1, y - 1, width + 2, height + 2, 0);
     display.fillRect(x, y, width, height, 0);
     display.drawRect(x, y, width, height, 1);
 
@@ -709,6 +710,12 @@ void menu_file() {
     case 1:
         open_file_page();
         break;
+
+    case 2:
+        drawPopupBox("WRITING...", 0, 0, 0, 0);
+        display.display();
+        ftm.save_ftm("/flash/save_test.ftm");
+        break;
     
     default:
         break;
@@ -812,7 +819,7 @@ void erase_config_set() {
 }
 
 void settings_page() {
-    const char *menu_str[6] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "ERASE CONFIG"};
+    const char *menu_str[6] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "RESET CONFIG"};
     void (*menuFunc[6])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, erase_config_set};
     fullScreenMenu("SETTINGS", menu_str, 6, menuFunc, 0);
     display.setFont(&rismol57);
@@ -1638,6 +1645,7 @@ void sequence_editor(instrument_t *inst) {
 
 void instrument_option_page() {
     const char *menu_str[3] = {"NEW", "RENAME (?", "REMOVE"};
+    srand(time(NULL));
     int ret = menu("INSTRUMENT", menu_str, 3, NULL, 60, 37, 0, 0, 0);
     switch (ret)
     {
