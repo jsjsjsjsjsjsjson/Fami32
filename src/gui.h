@@ -78,7 +78,6 @@ const char ch_name[5][10] = {
 void keypad_pause() {
     keypad.read();
     while (!keypad.available()) {
-        keypad.tick();
         vTaskDelay(32);
     }
     keypad.read();
@@ -820,6 +819,7 @@ void open_file_page() {
     drawPopupBox("READING...", 0, 0, 0, 0);
     vTaskDelay(16);
     int ret = ftm.open_ftm(file);
+    printf("OPEN\n");
     if (ret) {
         switch (ret)
         {
@@ -844,6 +844,7 @@ void open_file_page() {
         return;
     }
     ret = ftm.read_ftm_all();
+    printf("READ\n");
     if (ret) {
         switch (ret)
         {
