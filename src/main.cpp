@@ -243,6 +243,9 @@ void setup() {
         if (set_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
             printf("Updated 'BASE_FREQ_HZ' to %d\n", BASE_FREQ_HZ);
         }
+        if (set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
+            printf("Updated 'OVER_SAMPLE' to %d\n", OVER_SAMPLE);
+        }
         if (write_config(config_path) != CONFIG_SUCCESS) {
             printf("Failed to write config file.\n");
         }
@@ -264,6 +267,9 @@ void setup() {
     if (get_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
         printf("BASE_FREQ_HZ: %d\n", BASE_FREQ_HZ);
     }
+    if (get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
+        printf("OVER_SAMPLE: %d\n", OVER_SAMPLE);
+    }
 
     display.setCursor(0, 59);
     display.printf("Press any key to continue...");
@@ -278,7 +284,7 @@ void setup() {
     keypad.read();
 
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 8, &SOUND_TASK_HD);
-    xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 2, NULL);
+    xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 3, NULL);
 
     for (int i = 16; i > 0; i--) {
         display.fillScreen(1);
@@ -301,7 +307,7 @@ void setup() {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreate(gui_task, "GUI", 20480, NULL, 3, NULL); // &OSC_TASK);
+    xTaskCreate(gui_task, "GUI", 20480, NULL, 6, NULL); // &OSC_TASK);
     xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
 }
 

@@ -404,28 +404,31 @@ public:
             }
             rel_vol = env_vol * chl_vol;
             // DBG_PRINTF("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
+            float rel_pos_count;
+            if (mode == TRIANGULAR) rel_pos_count = pos_count / 2 / OVER_SAMPLE;
+            else rel_pos_count = pos_count / OVER_SAMPLE;
             for (int i = 0; i < tick_length; i++) {
-                i_pos = i_pos & 31;
-                tick_buf[i] = hpf.process(wave_table[mode][i_pos] * rel_vol);
-                if (!env_vol || !chl_vol) {
+                if (!rel_vol) {
+                    tick_buf[i] = 0;
                     continue;
                 }
-                if (mode == 4) {
-                    f_pos += pos_count / 2;
+                int sum = 0;
+                for (int j = 0; j < OVER_SAMPLE; j++) {
+                    i_pos = i_pos & 31;
+                    sum += wave_table[mode][i_pos] * rel_vol;
+                    f_pos += rel_pos_count;
+                    if (f_pos > 1.0f) {
+                        i_pos += (int)f_pos;
+                        f_pos -= (int)f_pos;
+                    }
                 }
-                else {
-                    f_pos += pos_count;
-                }
-                if (f_pos > 1.0f) {
-                    i_pos += (int)f_pos;
-                    f_pos -= (int)f_pos;
-                }
+                tick_buf[i] = sum / OVER_SAMPLE;
             }
         } else if (mode > 5) {
             int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
             rel_vol = env_vol * chl_vol;
             for (int i = 0; i < tick_length; i++) {
-                tick_buf[i] = hpf.process(nes_noise_make(mode - 6) * rel_vol);
+                tick_buf[i] = nes_noise_make(mode - 6) * rel_vol;
             }
         } else if (mode == DPCM_SAMPLE) {
             float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
@@ -823,6 +826,7 @@ private:
     unpk_item_t ft_items[5];
 
     LowPassFilter lpf;
+    HighPassFilter hpf;
 
     bool play_status = false;
 
@@ -847,6 +851,7 @@ public:
         set_speed(ftm_data->fr_block.speed);
         set_tempo(ftm_data->fr_block.tempo);
 
+        hpf.setCutoffFrequency(HPF_CUTOFF, SAMP_RATE);
         lpf.setCutoffFrequency(LPF_CUTOFF, SAMP_RATE);
     }
 
@@ -921,6 +926,7 @@ public:
                     r += channel[c].get_buf()[i];
             }
 
+            r = hpf.process(r);
             r = lpf.process(r);
             buf[i] = r / 2;
         }

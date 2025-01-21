@@ -61,7 +61,7 @@ extern i2s_chan_handle_t tx_handle;
 static uint8_t main_menu_pos = 0;
 
 static int8_t channel_sel_pos = 0;
-static int16_t inst_sel_pos = 0;
+static int inst_sel_pos = 0;
 
 uint8_t g_octv = 3;
 
@@ -74,6 +74,121 @@ bool setting_change = false;
 const char ch_name[5][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"
 };
+
+void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
+    uint8_t curserTick = 0;
+    uint8_t charPos = strlen(targetStr);
+    bool keyboardStat[16] = {0};
+    char charOfst = 'A';
+    bool curserStat = false;
+    for (;;) {
+        display.clearDisplay();
+        display.setFont(&rismol57);
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setCursor(1, 1);
+        display.setTextColor(0);
+        display.print(title);
+        display.setTextColor(1);
+        // display.setCursor(0, 12);
+        display.setFont(NULL);
+        display.drawRect(0, 16, 128, 11, 1);
+        display.setCursor(2, 18);
+        int16_t len = strlen(targetStr);
+        if (len > 20) {
+            display.printf("%.20s", targetStr + len - 20);
+        } else {
+            display.printf("%s", targetStr);
+        }
+        display.print(curserStat ? '_' : ' ');
+        display.drawFastHLine(0, 43, 128, 1);
+        display.drawFastHLine(0, 53, 128, 1);
+        display.drawFastHLine(0, 63, 128, 1);
+        for (uint8_t i = 0; i < 8; i++) {
+            display.drawFastVLine(i * 16, 44, 19, 1);
+        }
+        display.drawFastVLine(127, 44, 19, 1);
+        for (uint8_t c = 0; c < 8; c++) {
+            display.setTextColor(1);
+            display.setCursor((c * 16) + 6, 55);
+            if (keyboardStat[c]) {
+                display.fillRect(display.getCursorX() - 5, display.getCursorY() - 1, 15, 9, 1);
+                display.setTextColor(0);
+            }
+            display.printf("%c", c + charOfst);
+        }
+        for (uint8_t c = 8; c < 16; c++) {
+            display.setTextColor(1);
+            display.setCursor(((c - 8) * 16) + 6, 45);
+            if (keyboardStat[c]) {
+                display.fillRect(display.getCursorX() - 5, display.getCursorY() - 1, 15, 9, 1);
+                display.setTextColor(0);
+            }
+            display.printf("%c", c + charOfst);
+        }
+        display.display();
+        curserTick++;
+        if (curserTick > 64) {
+            curserTick = 0;
+            curserStat = !curserStat;
+        }
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OCTU) {
+                    charOfst += 16;
+                    printf("CHAR: %d\n", charOfst);
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    charOfst -= 16;
+                    printf("CHAR: %d\n", charOfst);
+                } else if (e.bit.KEY == KEY_S) {
+                    if (charPos > 0) {
+                        charPos--;
+                        targetStr[charPos] = '\0';
+                    }
+                } else if (e.bit.KEY == KEY_OK) {
+                    break;
+                }
+            }
+        }
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                targetStr[charPos] = e.bit.KEY + charOfst;
+                charPos++;
+                if (charPos > maxLen) {
+                    charPos--;
+                }
+                targetStr[charPos] = '\0';
+                keyboardStat[e.bit.KEY] = true;
+            } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
+                keyboardStat[e.bit.KEY] = false;
+            }
+        }
+        vTaskDelay(4);
+    }
+    display.setFont(&rismol35);
+}
+
+void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
+    if (e.bit.EVENT == KEY_JUST_PRESSED) {
+        if (e.bit.KEY > 13) {
+            *note = e.bit.KEY - 1;
+            *octv = 0;
+        } else {
+            *note = (e.bit.KEY % 12) + 1;
+            *octv = g_octv + (e.bit.KEY / 12);
+            if (touch_note) {
+                player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                player.channel[channel_sel_pos].set_note(item2note(*note, *octv));
+                player.channel[channel_sel_pos].note_start();
+            }
+        }
+    } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
+        if (touch_note) {
+            player.channel[channel_sel_pos].note_end();
+        }
+    }
+}
 
 void set_channel_sel_pos(int8_t p) {
     if (p > 4) {
@@ -441,7 +556,7 @@ const char* file_sel(const char *basepath) {
     }
 }
 
-int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), uint16_t width, uint16_t height, uint16_t x, uint16_t y, int8_t initPos) {
+int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), uint16_t width, uint16_t height, uint16_t x = 0, uint16_t y = 0, int8_t initPos = 0, int *menuVar = NULL) {
     if (x == 0) x = (128 - width) / 2;
     if (y == 0) y = (64 - height) / 2;
 
@@ -513,14 +628,26 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
                         menuPos = maxMenuPos;
                         pageStart = (maxMenuPos / itemsPerPage) * itemsPerPage;
                     }
+                    if (menuVar != NULL) {
+                        *menuVar = menuPos;
+                    }
                 } else if (e.bit.KEY == KEY_DOWN) {
                     menuPos++;
                     if (menuPos > maxMenuPos) {
                         menuPos = 0;
                         pageStart = 0;
                     }
+                    if (menuVar != NULL) {
+                        *menuVar = menuPos;
+                    }
                 }
             }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
         }
 
         vTaskDelay(4);
@@ -722,27 +849,6 @@ void menu_file() {
     }
 }
 
-void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
-    if (e.bit.EVENT == KEY_JUST_PRESSED) {
-        if (e.bit.KEY > 13) {
-            *note = e.bit.KEY - 1;
-            *octv = 0;
-        } else {
-            *note = (e.bit.KEY % 12) + 1;
-            *octv = g_octv + (e.bit.KEY / 12);
-            if (touch_note) {
-                player.channel[channel_sel_pos].set_inst(inst_sel_pos);
-                player.channel[channel_sel_pos].set_note(item2note(*note, *octv));
-                player.channel[channel_sel_pos].note_start();
-            }
-        }
-    } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
-        if (touch_note) {
-            player.channel[channel_sel_pos].note_end();
-        }
-    }
-}
-
 void channel_setting_page() {
     drawPinstript(0, 0, 128, 64);
     const char *menu_str[2] = {"SELECT CHAN", "EXT EFX NUM"};
@@ -818,10 +924,17 @@ void erase_config_set() {
     }
 }
 
+void over_sample_set() {
+    num_set_menu_int("OVER SAMPLE", 0, 8, 1, &OVER_SAMPLE, 0, 0, 100, 32);
+    if (set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
+        printf("Updated 'OVER_SAMPLE' to %d\n", OVER_SAMPLE);
+    }
+}
+
 void settings_page() {
-    const char *menu_str[6] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "RESET CONFIG"};
-    void (*menuFunc[6])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, erase_config_set};
-    fullScreenMenu("SETTINGS", menu_str, 6, menuFunc, 0);
+    const char *menu_str[7] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "RESET CONFIG"};
+    void (*menuFunc[7])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, over_sample_set, erase_config_set};
+    fullScreenMenu("SETTINGS", menu_str, 7, menuFunc, 0);
     display.setFont(&rismol57);
     drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
     display.display();
@@ -835,12 +948,67 @@ void settings_page() {
     display.setFont(&rismol35);
 }
 
+void fast_inst_sel_menu() {
+    drawPopupBox("LOADING...", 0, 0, 0, 0);
+    display.display();
+    char *inst_name[ftm.inst_block.inst_num];
+    for (int i = 0; i < ftm.inst_block.inst_num; i++) {
+        inst_name[i] = new char[25];
+        snprintf(inst_name[i], 24, "%02X-%.20s", i, ftm.get_inst(i)->name);
+    }
+
+    menu("INSTRUMEN INDEX", (const char**)inst_name, ftm.inst_block.inst_num, NULL, 100, 60, 0, 0, inst_sel_pos, &inst_sel_pos);
+
+    drawPopupBox("CLEAR...", 0, 0, 0, 0);
+    display.display();
+    for (int i = 0; i < ftm.inst_block.inst_num; i++) {
+        delete[] inst_name[i];
+    }
+}
+
+void test_displayKeyboard() {
+    char testStr[32] = {0};
+    displayKeyboard("TEST KEYBOARD", testStr, 31);
+    printf("Return! testStr:\n%s\n", testStr);
+    display.clearDisplay();
+    display.fillRect(0, 0, 128, 9, 1);
+    display.setFont(&rismol57);
+    display.setCursor(1, 1);
+    display.setTextColor(0);
+    display.printf("TEST KEYBOARD");
+    display.setFont(&rismol35);
+    display.setTextColor(1);
+    display.setCursor(0, 12);
+    display.setTextWrap(true);
+    display.printf("Return! testStr:\n%s\n", testStr);
+    display.setTextWrap(false);
+    display.display();
+    for (;;) {
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) break;
+        }
+        vTaskDelay(64);
+    }
+}
+
+void reboot_page() {
+    const char *menu_str[2] = {"NO", "YES"};
+    int ret = menu("REBOOT?", menu_str, 2, NULL, 42, 29, 0, 0, 0);
+    if (ret == 1) {
+        display.setFont(&rismol57);
+        drawPopupBox("REBOOTING...", 0, 0, 0, 0);
+        display.display();
+        esp_restart();
+    }
+}
+
 void main_option_page() {
     drawPinstript(0, 0, 128, 64);
-    const char *menu_str[5] = {edit_mode ? "STOP EDIT" : "START EDIT", 
+    const char *menu_str[8] = {edit_mode ? "STOP EDIT" : "START EDIT", 
                                 player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
-                                "CHANNEL", "FILE", "SETTINGS"};
-    int ret = menu("OPTION", menu_str, 5, NULL, 64, 45, 0, 0, 0);
+                                "INSTRUMENT", "CHANNEL", "FILE", "SETTINGS", "TEST KEYBOARD", "REBOOT"};
+    int ret = menu("OPTION", menu_str, 8, NULL, 64, 45, 0, 0, 0);
     switch (ret)
     {
     case 0:
@@ -852,16 +1020,27 @@ void main_option_page() {
         break;
     
     case 2:
-        channel_setting_page();
+        fast_inst_sel_menu();
         break;
 
     case 3:
-        menu_file();
+        channel_setting_page();
         break;
 
     case 4:
+        menu_file();
+        break;
+
+    case 5:
         settings_page();
         break;
+
+    case 6:
+        test_displayKeyboard();
+        break;
+
+    case 7:
+        reboot_page();
 
     default:
         break;
@@ -1887,6 +2066,12 @@ void osc_menu() {
         }
 
         vTaskDelay(4);
+    }
+}
+
+void song_info_menu() {
+    for (;;) {
+        
     }
 }
 
