@@ -277,11 +277,7 @@ void setup() {
 
     keypad.begin();
 
-    while (!keypad.available()) {
-        keypad.tick();
-        vTaskDelay(32);
-    }
-    keypad.read();
+    keypad_pause();
 
     xTaskCreate(sound_task, "SOUND TASK", 10240, NULL, 8, &SOUND_TASK_HD);
     xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 3, NULL);

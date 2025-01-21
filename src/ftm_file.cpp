@@ -91,6 +91,9 @@ void FTM_FILE::create_new_inst() {
 
 void FTM_FILE::remove_inst(int n) {
     instrument.erase(instrument.begin() + n);
+    if (instrument.size() < 1) {
+        create_new_inst();
+    }
     inst_block.inst_num = instrument.size();
 }
 
@@ -98,7 +101,7 @@ int FTM_FILE::open_ftm(const char *filename) {
     ftm_file = fopen(filename, "rb");
     if (ftm_file == NULL) {
         perror("Error opening file");
-        return -1;
+        return FILE_OPEN_ERROR;
     }
     fread(&header, sizeof(header), 1, ftm_file);
     if (strncmp(header.id, "FamiTracker Module", 18)) {
@@ -106,13 +109,13 @@ int FTM_FILE::open_ftm(const char *filename) {
         DBG_PRINTF("This is not a valid FTM file!\n");
         memset(&header, 0, sizeof(header));
         fclose(ftm_file);
-        return -2;
+        return FTM_NOT_VALID;
     };
     if (header.version != 0x0440) {
         DBG_PRINTF("Only FTM file version 0x0440 is supported\nVERSION: 0x%X\n", header.version);
         memset(&header, 0, sizeof(header));
         fclose(ftm_file);
-        return -3;
+        return NO_SUPPORT_VERSION;
     }
     DBG_PRINTF("\nOpen %.18s\n", header.id);
     DBG_PRINTF("VERSION: 0x%X\n", header.version);
@@ -162,8 +165,13 @@ void FTM_FILE::write_param_block() {
     fwrite(&pr_block, 1, sizeof(pr_block), ftm_file);
 }
 
-void FTM_FILE::read_param_block() {
+int FTM_FILE::read_param_block() {
     fread(&pr_block, 1, sizeof(pr_block), ftm_file);
+
+    if (pr_block.ext_chip != 0) {
+        DBG_PRINTF("Multi-Chip FTM files are not supported\n");
+        return NO_SUPPORT_EXTCHIP;
+    }
 
     DBG_PRINTF("\nPARAMS HEADER: %s\n", pr_block.id);
     DBG_PRINTF("VERSION: %d\n", pr_block.version);
@@ -175,6 +183,7 @@ void FTM_FILE::read_param_block() {
     DBG_PRINTF("V_STYLE: %d\n", pr_block.v_style);
     DBG_PRINTF("HIGHLINE1: %d\n", pr_block.hl1);
     DBG_PRINTF("HIGHLINE2: %d\n", pr_block.hl2);
+    return 0;
 }
 
 void FTM_FILE::read_info_block() {
@@ -193,13 +202,13 @@ void FTM_FILE::write_info_block() {
     fwrite(&nf_block, 1, sizeof(nf_block), ftm_file);
 }
 
-void FTM_FILE::read_header_block() {
+int FTM_FILE::read_header_block() {
     fread(&he_block, 1, 25, ftm_file);
 
     fread(&he_block.name, 1, he_block.size - (pr_block.channel * 2) - 1, ftm_file);
     if (he_block.track_num > 0) {
         DBG_PRINTF("Multi-track FTM files are not supported\n");
-        return;
+        return NO_SUPPORT_MULTITRACK;
     }
 
     for (int i = 0; i < pr_block.channel; i++) {
@@ -217,6 +226,7 @@ void FTM_FILE::read_header_block() {
     }
 
     DBG_PRINTF("\n");
+    return 0;
 }
 
 void FTM_FILE::write_header_block() {
@@ -311,6 +321,8 @@ void FTM_FILE::write_sequences() {
     for (int type = 0; type < 5; type++) {
         for (int i = 0; i < sequences[type].size(); i++) {
             if (sequences[type][i].length) {
+                sequences[type][i].type = type;
+                sequences[type][i].index = i;
                 fwrite(&sequences[type][i], 13, 1, ftm_file);
                 fwrite(sequences[type][i].data.data(), 1, sequences[type][i].length, ftm_file);
                 tol_size += 13 + sequences[type][i].length;
@@ -695,14 +707,22 @@ void FTM_FILE::print_frame_data(int index) {
     }
 }
 
-void FTM_FILE::read_ftm_all() {
+int FTM_FILE::read_ftm_all() {
     if (ftm_file == NULL) {
         DBG_PRINTF("No files were opened and could not be read.\n");
-        return;
+        return -1;
     }
 
-    read_param_block();
+    if (read_param_block()) {
+        return NO_SUPPORT_EXTCHIP;
+    }
+    
     read_info_block();
+
+    if (read_param_block()) {
+        return NO_SUPPORT_MULTITRACK;
+    }
+
     read_header_block();
 
     read_instrument_block();
@@ -721,6 +741,7 @@ void FTM_FILE::read_ftm_all() {
     read_dpcm_data();
 
     fclose(ftm_file);
+    return 0;
 }
 
 uint8_t FTM_FILE::ch_fx_count(int n) {

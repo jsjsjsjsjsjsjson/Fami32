@@ -75,6 +75,15 @@ const char ch_name[5][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"
 };
 
+void keypad_pause() {
+    keypad.read();
+    while (!keypad.available()) {
+        keypad.tick();
+        vTaskDelay(32);
+    }
+    keypad.read();
+}
+
 void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
     uint8_t curserTick = 0;
     uint8_t charPos = strlen(targetStr);
@@ -297,7 +306,7 @@ void drawPopupBox(const char* message, uint16_t width, uint16_t height, uint16_t
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
     uint8_t textWidth = 0;
-    uint8_t textHeight = 8;
+    uint8_t textHeight = 7;
 
     const int max_chars_per_line = 20;
     int numLines = 0;
@@ -799,8 +808,8 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
 
 void menu_navi() {
     drawPinstript(0, 0, 128, 64);
-    const char *menu_str[5] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "OSC"};
-    int ret = menu("MENU", menu_str, 5, NULL, 64, 45, 0, 0, main_menu_pos);
+    static const char *menu_str[6] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSC"};
+    int ret = menu("MENU", menu_str, 6, NULL, 64, 45, 0, 0, main_menu_pos);
     if (ret != -1)
         main_menu_pos = ret;
 }
@@ -810,13 +819,55 @@ void open_file_page() {
     const char* file = file_sel("/flash");
     drawPopupBox("READING...", 0, 0, 0, 0);
     vTaskDelay(16);
-    ftm.open_ftm(file);
-    ftm.read_ftm_all();
+    int ret = ftm.open_ftm(file);
+    if (ret) {
+        switch (ret)
+        {
+        case FILE_OPEN_ERROR:
+            drawPopupBox("OPEN FILE ERROR", 0, 0, 0, 0);
+            break;
+
+        case FTM_NOT_VALID:
+            drawPopupBox("NOT A VALID FTM FILE", 0, 0, 0, 0);
+            break;
+
+        case NO_SUPPORT_VERSION:
+            drawPopupBox("UNSUPPORTED .FTM VERSION", 0, 0, 0, 0);
+            break;
+        
+        default:
+            break;
+        }
+        display.display();
+        ftm.new_ftm();
+        keypad_pause();
+        return;
+    }
+    ret = ftm.read_ftm_all();
+    if (ret) {
+        switch (ret)
+        {
+        case NO_SUPPORT_EXTCHIP:
+            drawPopupBox("EXT-CHIP NOT SUPPORTED", 0, 0, 0, 0);
+            break;
+
+        case NO_SUPPORT_MULTITRACK:
+            drawPopupBox("MULTI-TRACK NOT SUPPORTED", 0, 0, 0, 0);
+            break;
+        
+        default:
+            break;
+        }
+        display.display();
+        ftm.new_ftm();
+        keypad_pause();
+        return;
+    }
     player.reload();
 }
 
 void channel_sel_page() {
-    const char *menu_str[5] = {"PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"};
+    static const char *menu_str[5] = {"PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"};
     int ret = menu("CHANNEL", menu_str, 5, NULL, 64, 53, 0, 0, channel_sel_pos);
     if (ret != -1)
         set_channel_sel_pos(ret);
@@ -824,17 +875,19 @@ void channel_sel_page() {
 
 void menu_file() {
     // drawPinstript(0, 0, 128, 64);
-    const char *menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "RECORD"};
+    static const char *menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "RECORD"};
     int ret = menu("FILE", menu_str, 5, NULL, 64, 45, 0, 0, 0);
     switch (ret)
     {
     case 0:
+        inst_sel_pos = 0;
         pause_sound();
         ftm.new_ftm();
         player.reload();
         break;
 
     case 1:
+        inst_sel_pos = 0;
         open_file_page();
         break;
 
@@ -851,7 +904,7 @@ void menu_file() {
 
 void channel_setting_page() {
     drawPinstript(0, 0, 128, 64);
-    const char *menu_str[2] = {"SELECT CHAN", "EXT EFX NUM"};
+    static const char *menu_str[2] = {"SELECT CHAN", "EXT EFX NUM"};
     char title[10];
     snprintf(title, 10, "CHANNEL%d", channel_sel_pos);
     int ret = menu(title, menu_str, 2, NULL, 64, 29, 0, 0, 0);
@@ -913,7 +966,7 @@ void finetune_set() {
 }
 
 void erase_config_set() {
-    const char *menu_str[2] = {"NO", "YES"};
+    static const char *menu_str[2] = {"NO", "YES"};
     int ret = menu("ARE YOU SURE !?", menu_str, 2, NULL, 68, 29, 0, 0, 0);
     if (ret == 1) {
         display.setFont(&rismol57);
@@ -925,14 +978,14 @@ void erase_config_set() {
 }
 
 void over_sample_set() {
-    num_set_menu_int("OVER SAMPLE", 0, 8, 1, &OVER_SAMPLE, 0, 0, 100, 32);
+    num_set_menu_int("OVER SAMPLE", 1, 8, 1, &OVER_SAMPLE, 0, 0, 100, 32);
     if (set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
         printf("Updated 'OVER_SAMPLE' to %d\n", OVER_SAMPLE);
     }
 }
 
 void settings_page() {
-    const char *menu_str[7] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "RESET CONFIG"};
+    static const char *menu_str[7] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "RESET CONFIG"};
     void (*menuFunc[7])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, over_sample_set, erase_config_set};
     fullScreenMenu("SETTINGS", menu_str, 7, menuFunc, 0);
     display.setFont(&rismol57);
@@ -993,7 +1046,7 @@ void test_displayKeyboard() {
 }
 
 void reboot_page() {
-    const char *menu_str[2] = {"NO", "YES"};
+    static const char *menu_str[2] = {"NO", "YES"};
     int ret = menu("REBOOT?", menu_str, 2, NULL, 42, 29, 0, 0, 0);
     if (ret == 1) {
         display.setFont(&rismol57);
@@ -1005,7 +1058,7 @@ void reboot_page() {
 
 void main_option_page() {
     drawPinstript(0, 0, 128, 64);
-    const char *menu_str[8] = {edit_mode ? "STOP EDIT" : "START EDIT", 
+    static const char *menu_str[8] = {edit_mode ? "STOP EDIT" : "START EDIT", 
                                 player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
                                 "INSTRUMENT", "CHANNEL", "FILE", "SETTINGS", "TEST KEYBOARD", "REBOOT"};
     int ret = menu("OPTION", menu_str, 8, NULL, 64, 45, 0, 0, 0);
@@ -1384,7 +1437,7 @@ void channel_menu() {
 
 void frames_option_page() {
     drawPinstript(0, 0, 128, 64);
-    const char *menu_str[5] = {"PUSH NEW", "INSERT NEW", "MOVE UP", "MOVE DOWN", "REMOVE"};
+    static const char *menu_str[5] = {"PUSH NEW", "INSERT NEW", "MOVE UP", "MOVE DOWN", "REMOVE"};
     char title[10];
     snprintf(title, 8, "FRAME%d", player.get_frame());
     int ret = menu(title, menu_str, 5, NULL, 64, 45, 0, 0, 0);
@@ -1562,9 +1615,9 @@ void sequence_editor(instrument_t *inst) {
     int pageStart = 0;
     int pageEnd = 32;
 
-    const char *sequ_name[5] = {"VOLUME", "ARPEGGIO", "PITCH", "HI-PITCH", "DUTY"};
+    static const char *sequ_name[5] = {"VOLUME", "ARPEGGIO", "PITCH", "HI-PITCH", "DUTY"};
 
-    const char *menu_str[4] = {"LENGTH", "LOOP", "RELEASE", "SEQU INDEX"};
+    static const char *menu_str[4] = {"LENGTH", "LOOP", "RELEASE", "SEQU INDEX"};
 
     int draw_base = 30;
 
@@ -1823,9 +1876,9 @@ void sequence_editor(instrument_t *inst) {
 }
 
 void instrument_option_page() {
-    const char *menu_str[3] = {"NEW", "RENAME (?", "REMOVE"};
+    static const char *menu_str[4] = {"NEW", "RENAME", "RAND NAME", "REMOVE"};
     srand(time(NULL));
-    int ret = menu("INSTRUMENT", menu_str, 3, NULL, 60, 37, 0, 0, 0);
+    int ret = menu("INSTRUMENT", menu_str, 4, NULL, 60, 45, 0, 0, 0);
     switch (ret)
     {
     case 0:
@@ -1833,11 +1886,16 @@ void instrument_option_page() {
         break;
 
     case 1:
-        strcpy(ftm.get_inst(inst_sel_pos)->name, random_name[rand() % 177]);
+        displayKeyboard("INSTRUMENT NAME", ftm.get_inst(inst_sel_pos)->name, 63);
         ftm.get_inst(inst_sel_pos)->name_len = strlen(ftm.get_inst(inst_sel_pos)->name);
         break;
 
     case 2:
+        strcpy(ftm.get_inst(inst_sel_pos)->name, random_name[rand() % 177]);
+        ftm.get_inst(inst_sel_pos)->name_len = strlen(ftm.get_inst(inst_sel_pos)->name);
+        break;
+
+    case 3:
         ftm.remove_inst(inst_sel_pos);
         break;
     
@@ -1862,7 +1920,7 @@ void instrument_menu() {
         display.setTextColor(0);
         display.setFont(&rismol57);
         display.setCursor(1, 1);
-        display.printf("INSTRUMENT ");
+        display.print("INSTRUMENT ");
         display.setFont(&font4x6);
         display.printf("(%02X/%02X)", inst_sel_pos, ftm.inst_block.inst_num - 1);
 
@@ -2070,8 +2128,109 @@ void osc_menu() {
 }
 
 void song_info_menu() {
+    int page = 0;
+    int select = -1;
+
+    static const char *info_menu_str[3] = {"TITLE", "AUTHOR", "COPYRIGHT"};
+
+    static const char *setting_menu_str[3] = {"TEMPO", "SPEED", "ROWS"};
+
+    static char *song_info[3] = {ftm.nf_block.title, ftm.nf_block.author, ftm.nf_block.copyright};
+
+    static int *song_setting[3] = {(int*)&ftm.fr_block.tempo, (int*)&ftm.fr_block.speed, (int*)&ftm.fr_block.pat_length};
+    static int min[3] = {32, 1, 1};
+    static int max[3] = {255, 31, 256};
+
     for (;;) {
-        
+        display.clearDisplay();
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setTextColor(0);
+        display.setFont(&rismol57);
+        display.setCursor(1, 1);
+        display.print(page ? "SONG SETTING" : "SONG INFO");
+
+        if (page) {
+            for (int i = 0; i < 3; i++) {
+                if (i == select) {
+                    display.setTextColor(0);
+                    display.fillRect(0, 11 + (i * 17), 128, 15, 1);
+                } else {
+                    display.setTextColor(1);
+                }
+                display.setFont(&rismol35);
+                display.setCursor(1, 12 + (i * 17));
+                display.printf("%s:", setting_menu_str[i]);
+                display.setFont(&rismol57);
+                display.setCursor(1, 18 + (i * 17));
+                display.print(*song_setting[i]);
+            }
+        } else {
+            for (int i = 0; i < 3; i++) {
+                if (i == select) {
+                    display.setTextColor(0);
+                    display.fillRect(0, 11 + (i * 17), 128, 15, 1);
+                } else {
+                    display.setTextColor(1);
+                }
+                display.setFont(&rismol35);
+                display.setCursor(1, 12 + (i * 17));
+                display.printf("%s:", info_menu_str[i]);
+                display.setFont(&rismol57);
+                display.setCursor(1, 18 + (i * 17));
+                display.print(song_info[i]);
+            }
+        }
+
+        display.display();
+
+        // KEYPAD
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (page) {
+                        int last_row = ftm.fr_block.pat_length;
+                        num_set_menu_int(setting_menu_str[select], min[select], max[select], 1, song_setting[select], 0, 0, 120, 36);
+                        if (ftm.fr_block.pat_length != last_row) {
+                            pause_sound();
+                            player.set_row(0);
+                            display.setFont(&rismol35);
+                            drawPopupBox("RESIZE PATTERN...", 0, 0, 0, 0);
+                            display.display();
+                            for (int c = 0; c < ftm.pr_block.channel; c++) {
+                                for (int i = 0; i < ftm.unpack_pt[c].size(); i++) {
+                                    ftm.unpack_pt[c][i].resize(ftm.fr_block.pat_length);
+                                }
+                            }
+                        }
+                        player.ref_speed_and_tempo();
+                    } else {
+                        displayKeyboard(info_menu_str[select], song_info[select], 31);
+                    }
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    display.setFont(&rismol35);
+                    menu_navi();
+                    break;
+                }if (e.bit.KEY == KEY_UP) {
+                    select--;
+                    if (select < -1) select = 2;
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    select++;
+                    if (select > 2) select = 0;
+                } else if ((e.bit.KEY == KEY_L) || (e.bit.KEY == KEY_R)) {
+                    page = !page;
+                    select = -1;
+                }
+            }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
+        }
+
+        vTaskDelay(16);
     }
 }
 
@@ -2095,8 +2254,12 @@ void gui_task(void *arg) {
         case 3:
             instrument_menu();
             break;
-        
+
         case 4:
+            song_info_menu();
+            break;
+        
+        case 5:
             osc_menu();
             break;
 

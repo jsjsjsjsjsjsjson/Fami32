@@ -12,6 +12,12 @@ extern "C" {
 #include "dpcm.h"
 }
 
+#define FILE_OPEN_ERROR -1
+#define FTM_NOT_VALID -2
+#define NO_SUPPORT_VERSION -3
+#define NO_SUPPORT_EXTCHIP -4
+#define NO_SUPPORT_MULTITRACK -5
+
 typedef struct __attribute__((packed)) {
     char id[18] = {'F','a','m','i','T','r','a','c','k','e','r',' ','M','o','d','u','l','e'};
     uint16_t version = 0x0440;
@@ -251,12 +257,12 @@ public:
 
     void write_file_header();
 
-    void read_param_block();
+    int read_param_block();
     void write_param_block();
     void read_info_block();
     void write_info_block();
 
-    void read_header_block();
+    int read_header_block();
     void write_header_block();
 
     void read_instrument_block();
@@ -290,7 +296,7 @@ public:
 
     void print_frame_data(int index);
     uint8_t ch_fx_count(int n);
-    void read_ftm_all();
+    int read_ftm_all();
 
     int8_t get_sequ_data(int type, int index, int seq_index);
     uint8_t get_sequ_len(int type, int index);

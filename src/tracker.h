@@ -50,7 +50,7 @@ public:
 
     void set_inst(int n) {
         memset(pos, 0, sizeof(pos));
-        memset(status, 0, sizeof(pos));
+        // memset(status, 0, sizeof(pos));
         inst_num = n;
         // DBG_PRINTF("(DEBUG)INSTRUMENT_SIZE: %d\n", ftm_data->instrument.size());
         instrument_t *inst_new = ftm_data->get_inst(inst_num);
@@ -81,6 +81,10 @@ public:
     void end() {
         for (int i = 0; i < 5; i++) {
             if (instrument->seq_index[i].enable) {
+                if (status[i] != SEQU_STOP) {
+                    if (ftm_data->get_sequ(i, instrument->seq_index[i].seq_index)->release != SEQ_FEAT_DISABLE)
+                        pos[i] = ftm_data->get_sequ(i, instrument->seq_index[i].seq_index)->release;
+                }
                 status[i] = SEQU_RELEASE;
             } else {
                 status[i] = SEQU_STOP;
@@ -93,13 +97,14 @@ public:
         memset(pos, 0, sizeof(pos));
         for (int i = 0; i < 5; i++) {
             status[i] = SEQU_STOP;
+            pos[i] = 0;
             var[i] = 0;
         }
     }
 
     void update_tick() {
         for (int i = 0; i < 5; i++) {
-            if (status[i]) {
+            if (status[i] || (status[VOL_SEQU] == SEQU_RELEASE)) {
                 sequences_t *sequ = ftm_data->get_sequ(i, instrument->seq_index[i].seq_index);
                 if (sequ == NULL) {
                     continue;
@@ -111,7 +116,7 @@ public:
                             pos[i]--;
                         }
                     }
-                } else {
+                } else if (status[i] == SEQU_RELEASE) {
                     if (sequ->release == SEQ_FEAT_DISABLE) {
                         status[i] = SEQU_STOP;
                         if (i == 0) {
@@ -211,6 +216,11 @@ private:
     uint8_t vib_dep = 0;
 
     uint8_t vib_pos = 0;
+
+    uint8_t tre_spd = 0;
+    uint8_t tre_dep = 0;
+
+    uint8_t tre_pos = 0;
 
     float portup_target;
     uint8_t portup_speed = 0;
@@ -355,6 +365,15 @@ public:
     void set_vibrato(uint8_t spd, uint8_t dep) {
         vib_spd = spd;
         vib_dep = dep;
+
+        vib_pos = 0;
+    }
+
+    void set_tremolo(uint8_t spd, uint8_t dep) {
+        tre_spd = spd;
+        tre_dep = dep;
+
+        tre_pos = 0;
     }
 
     void set_period_offset(int8_t var) {
@@ -396,16 +415,30 @@ public:
     }
 
     void make_tick_sound() {
+        int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
+
+        int8_t tre_var = 0;
+        if (tre_spd && tre_dep) {
+            tre_pos = (tre_pos + tre_spd) & 63;
+            tre_var = ((vib_table[tre_pos] * tre_dep) / 32) - 2;
+        }
+
+        rel_vol = env_vol * (chl_vol + tre_var);
+
+        if (vib_spd && vib_dep) {
+            vib_pos = (vib_pos + vib_spd) & 63;
+            int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
+            pos_count = (period2freq(get_period() + vib_var) / SAMP_RATE) * 32;
+        }
+
         if (mode < 5) {
-            int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
             if (mode == TRIANGULAR) {
-                env_vol = env_vol ? 15 : 0;
-                chl_vol = chl_vol ? 15 : 0;
+                rel_vol = rel_vol ? 225 : 0;
             }
-            rel_vol = env_vol * chl_vol;
             // DBG_PRINTF("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
             float rel_pos_count;
             if (mode == TRIANGULAR) rel_pos_count = pos_count / 2 / OVER_SAMPLE;
+
             else rel_pos_count = pos_count / OVER_SAMPLE;
             for (int i = 0; i < tick_length; i++) {
                 if (!rel_vol) {
@@ -425,8 +458,6 @@ public:
                 tick_buf[i] = sum / OVER_SAMPLE;
             }
         } else if (mode > 5) {
-            int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
-            rel_vol = env_vol * chl_vol;
             for (int i = 0; i < tick_length; i++) {
                 tick_buf[i] = nes_noise_make(mode - 6) * rel_vol;
             }
@@ -553,15 +584,6 @@ public:
                 }
             }
 
-            if (vib_spd && vib_dep) {
-                vib_pos = (vib_pos + vib_spd) & 63;
-                int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
-                freq = period2freq(get_period() + vib_var);
-                pos_count = (freq / SAMP_RATE) * 32;
-            } else {
-                vib_pos = 0;
-            }
-
             if (arp_fx_n1 || arp_fx_n2) {
                 if (arp_fx_pos) {
                     set_note_rely(base_note + arp_fx_n2);
@@ -608,10 +630,15 @@ public:
 
     void set_dpcm_offset(uint8_t n) {
         sample_start = n;
+        sample_pos = n * 8;
     }
 
     void set_dpcm_var(uint8_t n) {
         sample_var = n;
+    }
+
+    void set_dpcm_pitch(uint8_t n) {
+        sample_pitch = n & 15;
     }
 
     void set_arp_fx(uint8_t n1, uint8_t n2) {
@@ -701,10 +728,6 @@ public:
 
     uint8_t get_noise_rate() {
         return noise_rate_rel;
-    }
-
-    void set_dpcm_pitch(uint8_t pit) {
-        sample_pitch = pit;
     }
 
     uint8_t get_dpcm_pitch() {
@@ -888,6 +911,11 @@ public:
         // memset(buf.data(), 0, get_buf_size_byte());
     }
 
+    void ref_speed_and_tempo() {
+        set_speed(ftm_data->fr_block.speed);
+        set_tempo(ftm_data->fr_block.tempo);
+    }
+
     void set_speed(int speed_ref) {
         if (speed_ref < 1) speed_ref = 1;
         speed = speed_ref;
@@ -957,7 +985,7 @@ public:
         }
     }
 
-    void process_efx(fx_t fxdata[4], int c) {
+    void process_efx_pre(fx_t fxdata[4], int c) {
         uint8_t count = ftm_data->ch_fx_count(c);
         for (uint8_t i = 0; i < count; i++) {
             if (fxdata[i].fx_cmd == 0x01) {
@@ -986,16 +1014,19 @@ public:
             } else if (fxdata[i].fx_cmd == 0x0B) {
                 channel[c].set_vibrato(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
                 DBG_PRINTF("C%d: SET VIBRATO SPEED -> %d, DEEP -> %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+            } else if (fxdata[i].fx_cmd == 0x0C) {
+                channel[c].set_tremolo(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                DBG_PRINTF("C%d: SET TREMOLO SPEED -> %d, DEEP -> %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
             } else if (fxdata[i].fx_cmd == 0x0D) {
                 channel[c].set_period_offset(fxdata[i].fx_var - 0x80);
                 DBG_PRINTF("C%d: SET PERIOD_OFFSET -> %d\n", c, fxdata[i].fx_var - 0x80);
             } else if (fxdata[i].fx_cmd == 0x0F) {
                 channel[c].set_dpcm_var(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET DPCM VAR -> %d\n", c, fxdata[i].fx_var);
-            } else if (fxdata[i].fx_cmd == 0x10) {
+            } else if ((fxdata[i].fx_cmd == 0x10)) {// || (fxdata[i].fx_cmd == 0x08)) {
                 channel[c].set_slide_up(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET SLIDE_UP -> %d\n", c, fxdata[i].fx_var);
-            } else if (fxdata[i].fx_cmd == 0x11) {
+            } else if ((fxdata[i].fx_cmd == 0x11)) {//|| (fxdata[i].fx_cmd == 0x09)) {
                 channel[c].set_slide_down(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET SLIDE_DOWN -> %d\n", c, fxdata[i].fx_var);
             } else if (fxdata[i].fx_cmd == 0x12) {
@@ -1017,16 +1048,18 @@ public:
             } else if (fxdata[i].fx_cmd == 0x17) {
                 channel[c].set_delay_cut(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET DELAY_CUT -> %d\n", fxdata[i].fx_var);
-            } else if (fxdata[i].fx_cmd == 0x0E) {
-                // DBG_PRINTF("");
-            } else if (fxdata[i].fx_cmd != NO_EFX) {
-                DBG_PRINTF("UNKNOW CMD: %02X, PARAM=%02X\n", fxdata[i].fx_cmd, fxdata[i].fx_var);
+            } else if (fxdata[i].fx_cmd == 0x1F) {
+                channel[c].set_dpcm_pitch(fxdata[i].fx_var);
+                DBG_PRINTF("C%d: SET DPCM PITCH -> %d\n", fxdata[i].fx_var);
             }
         }
     }
 
+    void process_efx_post(fx_t fxdata[4], int c) {
+
+    }
+
     void process_item(unpk_item_t item, int c) {
-        process_efx(item.fxdata, c);
         if (item.instrument != NO_INST) {
             channel[c].set_inst(item.instrument);
         }
@@ -1044,6 +1077,7 @@ public:
             channel[c].set_vol(item.volume);
             // DBG_PRINTF("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
         }
+        process_efx_pre(item.fxdata, c);
     }
 
     void process_tick() {
@@ -1121,7 +1155,9 @@ public:
     }
 
     void set_row(int r) {
-        row = r % ftm_data->fr_block.pat_length;
+        if (r >= ftm_data->fr_block.pat_length) r = 0;
+        else if (r < 0) r = ftm_data->fr_block.pat_length;
+        row = r;
     }
 
     int get_frame() {
