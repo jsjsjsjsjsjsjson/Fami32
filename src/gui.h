@@ -831,7 +831,7 @@ void vol_set_page() {
 
 void menu_navi() {
     drawPinstript(0, 0, 128, 64);
-    static const char *menu_str[6] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSC"};
+    static const char *menu_str[6] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSCILLOSCOPE"};
     int ret = menu("MENU", menu_str, 6, NULL, 64, 45, 0, 0, main_menu_pos);
     if (ret != -1)
         main_menu_pos = ret;
