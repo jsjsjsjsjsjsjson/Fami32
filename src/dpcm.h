@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-int encode_dpcm(const int8_t *input, int input_size, uint8_t *output);
-int decode_dpcm(const uint8_t *input, int input_size, int8_t *output);
+int encode_dpcm(const uint8_t *input, int input_size, uint8_t *output);
+int decode_dpcm(const uint8_t *input, int input_size, uint8_t *output);
 
 #endif

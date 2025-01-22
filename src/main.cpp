@@ -246,6 +246,9 @@ void setup() {
         if (set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
             printf("Updated 'OVER_SAMPLE' to %d\n", OVER_SAMPLE);
         }
+        if (set_config_value("VOLUME", CONFIG_INT, &g_vol) == CONFIG_SUCCESS) {
+            printf("Updated 'VOLUME' to %d\n", g_vol);
+        }
         if (write_config(config_path) != CONFIG_SUCCESS) {
             printf("Failed to write config file.\n");
         }
@@ -269,6 +272,9 @@ void setup() {
     }
     if (get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
         printf("OVER_SAMPLE: %d\n", OVER_SAMPLE);
+    }
+    if (get_config_value("VOLUME", CONFIG_INT, &g_vol) == CONFIG_SUCCESS) {
+        printf("VOLUME: %d\n", g_vol);
     }
 
     display.setCursor(0, 59);

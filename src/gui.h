@@ -2,6 +2,7 @@
 #define GUI_H
 
 #include <stdio.h>
+#include <vector>
 #include <Adafruit_SSD1306.h>
 #include "ftm_file.h"
 #include "fonts/rismol_3_4.h"
@@ -65,15 +66,27 @@ static int inst_sel_pos = 0;
 
 uint8_t g_octv = 3;
 
+extern int g_vol;
+
 bool touch_note = true;
 
 bool edit_mode = false;
 
 bool setting_change = false;
 
+int copy_start = 0;
+// int copy_end = 0;
+bool copy_mode = false;
+
+std::vector<unpk_item_t> clipboard_data;
+
 const char ch_name[5][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"
 };
+
+int limit_value(int value, int min, int max) {
+    return (value < min) ? min : (value > max) ? max : value;
+}
 
 void keypad_pause() {
     keypad.read();
@@ -805,6 +818,17 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
     return *num;
 }
 
+void vol_set_page() {
+    int vol_last = g_vol;
+    num_set_menu_int("VOLUME", 0, 32, 1, &g_vol, 0, 0, 68, 32);
+    if (g_vol != vol_last) {
+        drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
+        display.display();
+        set_config_value("VOLUME", CONFIG_INT, &g_vol);
+        write_config(config_path);
+    }
+}
+
 void menu_navi() {
     drawPinstript(0, 0, 128, 64);
     static const char *menu_str[6] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSC"};
@@ -878,6 +902,8 @@ void menu_file() {
     // drawPinstript(0, 0, 128, 64);
     static const char *menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "RECORD"};
     int ret = menu("FILE", menu_str, 5, NULL, 64, 45, 0, 0, 0);
+    static char current_file[256];
+    static char target_file[256];
     switch (ret)
     {
     case 0:
@@ -893,9 +919,32 @@ void menu_file() {
         break;
 
     case 2:
+        if (strlen(ftm.current_file) == 0) {
+            strcpy(current_file, "Untitled");
+            displayKeyboard("SAVE...", current_file, 255);
+            printf("CUR: %s\n", current_file);
+            sprintf(target_file, "/flash/%s.ftm", current_file);
+            printf("SAVE AS TO: %s\n", target_file);
+            drawPopupBox("WRITING...", 0, 0, 0, 0);
+            display.display();
+            ftm.save_as_ftm(target_file);
+        } else {
+            drawPopupBox("WRITING...", 0, 0, 0, 0);
+            display.display();
+            ftm.save_ftm();
+        }
+        break;
+
+    case 3:
+        strcpy(current_file, basename(ftm.current_file));
+        current_file[strlen(current_file) - 4] = '\0';
+        displayKeyboard("SAVE AS...", current_file, 255);
+        printf("CUR: %s\n", current_file);
+        sprintf(target_file, "/flash/%s.ftm", current_file);
+        printf("SAVE AS TO: %s\n", target_file);
         drawPopupBox("WRITING...", 0, 0, 0, 0);
         display.display();
-        ftm.save_ftm("/flash/save_test.ftm");
+        ftm.save_as_ftm(target_file);
         break;
     
     default:
@@ -986,9 +1035,9 @@ void over_sample_set() {
 }
 
 void settings_page() {
-    static const char *menu_str[7] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "RESET CONFIG"};
-    void (*menuFunc[7])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, over_sample_set, erase_config_set};
-    fullScreenMenu("SETTINGS", menu_str, 7, menuFunc, 0);
+    static const char *menu_str[8] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "VOLUME", "RESET CONFIG"};
+    void (*menuFunc[8])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, over_sample_set, vol_set_page, erase_config_set};
+    fullScreenMenu("SETTINGS", menu_str, 8, menuFunc, 0);
     display.setFont(&rismol57);
     drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
     display.display();
@@ -1057,12 +1106,55 @@ void reboot_page() {
     }
 }
 
+void copy_data(int start, int end, int channel) {
+    clipboard_data.resize(end - start);
+    for (int i = start; i < end; i++) {
+        clipboard_data[i - start] = ftm.get_pt_item(channel, player.get_cur_frame_map(channel), i);
+    }
+}
+
+void paste_data(int start, int channel) {
+    if (edit_mode) {
+        for (int i = 0; i < clipboard_data.size(); i++) {
+            if ((i + start) < ftm.unpack_pt[channel][player.get_cur_frame_map(channel)].size()) {
+                ftm.set_pt_item(channel, player.get_cur_frame_map(channel), i + start, clipboard_data[i]);
+            }
+        }
+    }
+}
+
+void clear_clipboard() {
+    clipboard_data.clear();
+}
+
+void clipboard_page() {
+    const char *menu_str[2] = {"COPY", "PASTE"};
+    int ret = menu("CLIPBOARD", menu_str, 2, NULL, 64, 29, 0, 0, 0);
+    switch (ret)
+    {
+    case 0:
+        copy_mode = true;
+        copy_start = player.get_row();
+        break;
+
+    case 1:
+        copy_mode = false;
+        drawPopupBox("PROCESS...", 0, 0, 0, 0);
+        display.display();
+        paste_data(player.get_row(), channel_sel_pos);
+        break;
+    
+    default:
+        break;
+    }
+}
+
 void main_option_page() {
     drawPinstript(0, 0, 128, 64);
-    static const char *menu_str[8] = {edit_mode ? "STOP EDIT" : "START EDIT", 
+    const char *menu_str[10] = {edit_mode ? "STOP EDIT" : "START EDIT", 
                                 player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
-                                "INSTRUMENT", "CHANNEL", "FILE", "SETTINGS", "TEST KEYBOARD", "REBOOT"};
-    int ret = menu("OPTION", menu_str, 8, NULL, 64, 45, 0, 0, 0);
+                                "INSTRUMENT", "CLIPBOARD", "CHANNEL", "FILE", "SETTINGS", "VOLUME", "TEST KEYBOARD", "REBOOT"};
+    int ret = menu("OPTION", menu_str, 10, NULL, 64, 45, 0, 0, 0);
     switch (ret)
     {
     case 0:
@@ -1078,23 +1170,32 @@ void main_option_page() {
         break;
 
     case 3:
-        channel_setting_page();
+        clipboard_page();
         break;
 
     case 4:
-        menu_file();
+        channel_setting_page();
         break;
 
     case 5:
-        settings_page();
+        menu_file();
         break;
 
     case 6:
-        test_displayKeyboard();
+        settings_page();
         break;
 
     case 7:
+        vol_set_page();
+        break;
+
+    case 8:
+        test_displayKeyboard();
+        break;
+
+    case 9:
         reboot_page();
+        break;
 
     default:
         break;
@@ -1133,6 +1234,11 @@ void tracker_menu() {
             if (((player.get_row() + r) >= 0) && ((player.get_row() + r) < ftm.fr_block.pat_length)) {
                 display.printf("%02X ", player.get_row() + r);
                 display.setCursor(display.getCursorX() - 2, display.getCursorY());
+                if (copy_mode) {
+                    if (((player.get_row() + r) >= copy_start) && (r <= 0)) {
+                        drawChessboard((channel_sel_pos * 24) + 8, display.getCursorY(), 23, 6);
+                    }
+                }
                 for (int i = 0; i < 5; i++) {
                     unpk_item_t pt_tmp = ftm.get_pt_item(i, player.get_cur_frame_map(i), player.get_row() + r);
                     if (pt_tmp.note != NO_NOTE) {
@@ -1182,8 +1288,13 @@ void tracker_menu() {
                 if (edit_mode) {
                     unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                     pt_tmp.note = note_set;
-                    pt_tmp.octave = octv_set;
-                    pt_tmp.instrument = inst_sel_pos;
+                    if (note_set > 12) {
+                        pt_tmp.octave = NO_OCT;
+                        pt_tmp.instrument = NO_INST;
+                    } else {
+                        pt_tmp.octave = octv_set;
+                        pt_tmp.instrument = inst_sel_pos;
+                    }
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                     player.set_row(player.get_row() + 1);
                 }
@@ -1195,16 +1306,24 @@ void tracker_menu() {
             keypadEvent e = keypad.read();
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
                 if (e.bit.KEY == KEY_OK) {
-                    if (player.get_play_status()) {
-                        pause_sound();
+                    if (copy_mode) {
+                        copy_mode = false;
+                        drawPopupBox("PROCESS...", 0, 0, 0, 0);
+                        display.display();
+                        copy_data(copy_start, player.get_row() + 1, channel_sel_pos);
                     } else {
-                        start_sound();
+                        if (player.get_play_status()) {
+                            pause_sound();
+                        } else {
+                            start_sound();
+                        }
                     }
                 } else if (e.bit.KEY == KEY_BACK) {
                     if (edit_mode) {
                         unpk_item_t pt_tmp;
                         ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                     }
+                    copy_mode = false;
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
                     break;
@@ -1266,6 +1385,12 @@ void channel_menu() {
             if (((player.get_row() + r) >= 0) && ((player.get_row() + r) < ftm.fr_block.pat_length)) {
                 display.printf("%02X ", player.get_row() + r);
                 display.setCursor(display.getCursorX() - 2, display.getCursorY());
+
+                if (copy_mode) {
+                    if (((player.get_row() + r) >= copy_start) && (r <= 0)) {
+                        drawChessboard(9, display.getCursorY(), 50 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 6);
+                    }
+                }
 
                 unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row() + r);
                 if (pt_tmp.note != NO_NOTE) {
@@ -1380,10 +1505,17 @@ void channel_menu() {
             keypadEvent e = keypad.read();
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
                 if (e.bit.KEY == KEY_OK) {
-                    if (player.get_play_status()) {
-                        pause_sound();
+                    if (copy_mode) {
+                        copy_mode = false;
+                        drawPopupBox("PROCESS...", 0, 0, 0, 0);
+                        display.display();
+                        copy_data(copy_start, player.get_row() + 1, channel_sel_pos);
                     } else {
-                        start_sound();
+                        if (player.get_play_status()) {
+                            pause_sound();
+                        } else {
+                            start_sound();
+                        }
                     }
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
@@ -1407,6 +1539,7 @@ void channel_menu() {
                         drawPinstript(0, 0, 128, 64);
                         channel_sel_page();
                     }
+                    copy_mode = false;
                 } else if (e.bit.KEY == KEY_MENU) {
                     main_option_page();
                 } else if (e.bit.KEY == KEY_P) {
@@ -1420,9 +1553,17 @@ void channel_menu() {
                 } else if (e.bit.KEY == KEY_DOWN) {
                     player.set_row(player.get_row() + 1);
                 } else if (e.bit.KEY == KEY_L) {
-                    x_pos--;
+                    if (edit_mode) {
+                        x_pos--;
+                    } else {
+                        set_channel_sel_pos(channel_sel_pos - 1);
+                    }
                 } else if (e.bit.KEY == KEY_R) {
-                    x_pos++;
+                    if (edit_mode) {
+                        x_pos++;
+                    } else {
+                        set_channel_sel_pos(channel_sel_pos + 1);
+                    }
                 } else if (e.bit.KEY == KEY_OCTU) {
                     g_octv++;
                 } else if (e.bit.KEY == KEY_OCTD) {
@@ -2072,10 +2213,14 @@ void osc_menu() {
         for (int i = 0; i < 5; i++) {
             int draw_base = (i * 24) + 19;
             // display.drawFastVLine((i * 24) + 19, 11, 53, 1);
+            if (player.get_mute(i)) {
+                drawPinstript((i * 24) + 8, 11, 23, 53);
+            }
             for (int y = 11; y < 63; y++) {
-                int p1 = draw_base + (player.channel[i].get_buf()[y * 4] / 170);
-                int p2 = draw_base + (player.channel[i].get_buf()[(y + 1) * 4] / 170);
-                display.drawLine(p1, y, p2, y + 1, 1);
+                int16_t p1 = limit_value(player.channel[i].get_buf()[y * 4] / 170, -12, 12);
+                int16_t p2 = limit_value(player.channel[i].get_buf()[(y + 1) * 4] / 170, -12, 12);
+
+                display.drawLine(draw_base + p2, y, draw_base + p1, y, 1);
             }
         }
 

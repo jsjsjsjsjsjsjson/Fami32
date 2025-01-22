@@ -29,6 +29,8 @@ typedef enum {
     SEQU_RELEASE
 } note_stat_t;
 
+int g_vol = 16;
+
 class FAMI_INSTRUMENT {
 private:
     FTM_FILE *ftm_data;
@@ -66,8 +68,8 @@ public:
     }
 
     void start() {
-        memset(pos, 0, sizeof(pos));
         for (int i = 0; i < 5; i++) {
+            pos[i] = 0;
             if (instrument->seq_index[i].enable) {
                 status[i] = SEQU_PLAYING;
                 var[i] = ftm_data->get_sequ_data(i, instrument->seq_index[i].seq_index, 0);
@@ -190,7 +192,7 @@ private:
 
     size_t sample_len = 0;
 
-    int8_t sample_var = 0;
+    uint8_t sample_var = 0;
 
     int tick_length;
     std::vector<int16_t> tick_buf;
@@ -277,6 +279,11 @@ public:
         vib_dep = 0;
 
         vib_pos = 0;
+
+        tre_spd = 0;
+        tre_dep = 0;
+
+        tre_pos = 0;
 
         portup_target = 0.0f;
         portup_speed = 0;
@@ -377,8 +384,9 @@ public:
     }
 
     void set_period_offset(int8_t var) {
+        int8_t per_off_last = period_offset;
         period_offset = var;
-        set_period(get_period());
+        if (per_off_last != period_offset) set_period(get_period());
     }
 
     void set_port_up(uint8_t spd, uint8_t offset) {
@@ -420,7 +428,7 @@ public:
         int8_t tre_var = 0;
         if (tre_spd && tre_dep) {
             tre_pos = (tre_pos + tre_spd) & 63;
-            tre_var = ((vib_table[tre_pos] * tre_dep) / 32) - 2;
+            tre_var = (vib_table[tre_pos] * tre_dep) / 32;
         }
 
         rel_vol = env_vol * (chl_vol + tre_var);
@@ -464,7 +472,7 @@ public:
         } else if (mode == DPCM_SAMPLE) {
             float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
             if (sample_num < ftm_data->dpcm_samples.size()) {
-                int8_t *sample = ftm_data->dpcm_samples[sample_num].pcm_data.data();
+                uint8_t *sample = ftm_data->dpcm_samples[sample_num].pcm_data.data();
                 for (int i = 0; i < tick_length; i++) {
                     if (sample_status) {
                         sample_var = sample[sample_pos];
@@ -476,14 +484,13 @@ public:
                                 if (sample_loop) {
                                     sample_pos = 0;
                                 } else {
-                                    sample_fpos = 0;
-                                    sample_pos = sample_start * 8;
                                     sample_status = false;
                                 }
                             }
                         }
                     }
-                    tick_buf[i] = hpf.process(sample_var * 128);
+                    // printf("SAMPLE_VAR: %d\n", sample_var);
+                    tick_buf[i] = hpf.process(sample_var * 64);
                 }
             }
         } else {
@@ -508,11 +515,13 @@ public:
             }
 
             if (inst_proc.get_sequ_enable(ARP_SEQU)) {
-                if (mode < 5) {
-                    set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
-                } else if (mode > 5) {
-                    // DBG_PRINTF("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
-                    set_noise_rate_rel((noise_rate + inst_proc.get_sequ_var(ARP_SEQU)) & 15);
+                if (inst_proc.get_status(ARP_SEQU)) {
+                    if (mode < 5) {
+                        set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
+                    } else if (mode > 5) {
+                        // DBG_PRINTF("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
+                        set_noise_rate_rel((noise_rate + inst_proc.get_sequ_var(ARP_SEQU)) & 15);
+                    }
                 }
             }
 
@@ -572,13 +581,13 @@ public:
 
             if (portup_speed) {
                 set_period(get_period() - portup_speed);
-                if (get_period() < portup_target) {
+                if (get_period() <= portup_target) {
                     portup_speed = 0;
                     set_period(portup_target);
                 }
             } else if (portdown_speed) {
                 set_period(get_period() + portdown_speed);
-                if (get_period() > portdown_target) {
+                if (get_period() >= portdown_target) {
                     portdown_speed = 0;
                     set_period(portdown_target);
                 }
@@ -618,7 +627,7 @@ public:
     void note_start() {
         if (mode == DPCM_SAMPLE) {
             sample_fpos = 0;
-            sample_pos = sample_start * 8;
+            sample_pos = sample_start * 256;
             sample_status = true;
         } else {
             inst_proc.start();
@@ -630,7 +639,7 @@ public:
 
     void set_dpcm_offset(uint8_t n) {
         sample_start = n;
-        sample_pos = n * 8;
+        sample_pos = n * 256;
     }
 
     void set_dpcm_var(uint8_t n) {
@@ -702,9 +711,9 @@ public:
             }
             sample_loop = inst_proc.get_inst()->dpcm[note - 24].loop;
             sample_pitch = inst_proc.get_inst()->dpcm[note - 24].pitch;
-            sample_len = (ftm_data->dpcm_samples[sample_num].sample_size_byte + 1) * 8;
+            sample_len = ftm_data->dpcm_samples[sample_num].sample_size_byte * 8;
             DBG_PRINTF("DPCM_CHANNEL: SET NUM->%d, PITCH->%d, LOOP->%d, SMP_LEN->%d\n", sample_num, sample_pitch, sample_loop, sample_len);
-            sample_pos = 0;
+            sample_pos = sample_start * 256;
         }
     }
 
@@ -796,7 +805,7 @@ public:
 
     uint8_t get_rel_vol() {
         if (mode == DPCM_SAMPLE) {
-            return abs(sample_var) * 2;
+            return sample_var * 2;
         } else {
             return rel_vol;
         }
@@ -956,7 +965,7 @@ public:
 
             r = hpf.process(r);
             r = lpf.process(r);
-            buf[i] = r / 2;
+            buf[i] = (r * g_vol) >> 5;
         }
     }
 
@@ -1035,13 +1044,7 @@ public:
             } else if (fxdata[i].fx_cmd == 0x13) {
                 channel[c].set_dpcm_offset(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET DPCM OFFSET %d Bytes (%d Samples)\n", c, fxdata[i].fx_var, fxdata[i].fx_var * 8);
-            } else if (fxdata[i].fx_cmd == 0x14) {
-                channel[c].set_port_up(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-                DBG_PRINTF("C%d: SET PORT_UP SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-            } else if (fxdata[i].fx_cmd == 0x15) {
-                channel[c].set_port_down(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-                DBG_PRINTF("C%d: SET PORT_DOWN SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
-            } else if (fxdata[i].fx_cmd == 0x16) {
+            }else if (fxdata[i].fx_cmd == 0x16) {
                 channel[c].set_vol_slide_up(HEX_B1(fxdata[i].fx_var));
                 channel[c].set_vol_slide_down(HEX_B2(fxdata[i].fx_var));
                 DBG_PRINTF("C%d: SET VOL_SLIDE, UP->%d - DOWN->%d = %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var), HEX_B1(fxdata[i].fx_var) - HEX_B2(fxdata[i].fx_var));
@@ -1056,10 +1059,20 @@ public:
     }
 
     void process_efx_post(fx_t fxdata[4], int c) {
-
+        uint8_t count = ftm_data->ch_fx_count(c);
+        for (uint8_t i = 0; i < count; i++) {
+            if (fxdata[i].fx_cmd == 0x14) {
+                channel[c].set_port_up(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                DBG_PRINTF("C%d: SET PORT_UP SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+            } else if (fxdata[i].fx_cmd == 0x15) {
+                channel[c].set_port_down(HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+                DBG_PRINTF("C%d: SET PORT_DOWN SPEED -> %d, +%dNOTE\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var));
+            }
+        }
     }
 
     void process_item(unpk_item_t item, int c) {
+        process_efx_pre(item.fxdata, c);
         if (item.instrument != NO_INST) {
             channel[c].set_inst(item.instrument);
         }
@@ -1077,7 +1090,7 @@ public:
             channel[c].set_vol(item.volume);
             // DBG_PRINTF("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
         }
-        process_efx_pre(item.fxdata, c);
+        process_efx_post(item.fxdata, c);
     }
 
     void process_tick() {

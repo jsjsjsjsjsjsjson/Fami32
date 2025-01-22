@@ -1,48 +1,73 @@
 #include "dpcm.h"
 
-int encode_dpcm(const int8_t *input, int input_size, uint8_t *output) {
-    int bit_position = 0;
-    int byte_index = 0;
-    int previous_value = 0;
+int encode_dpcm(const uint8_t *input, int input_size, uint8_t *output)
+{
+    int predictor = 64;
+    const int step = 2;
+    int acc = 0;
 
-    for (int i = 0; i < input_size; ++i) {
-        int current_value = input[i];
-        int diff = current_value - previous_value;
+    int total_bytes = (input_size + 7) / 8;
 
-        int encoded_bit = (diff >= 0) ? 1 : 0;
+    for (int i = 0; i < total_bytes; i++) {
+        uint8_t out_byte = 0;
 
-        if (encoded_bit == 1) {
-            output[byte_index] |= (1 << (7 - bit_position));
+        for (int bit_index = 0; bit_index < 8; bit_index++) {
+            int sample_index = i * 8 + bit_index;
+            if (sample_index >= input_size) {
+                break;
+            }
+
+            int error = (int)input[sample_index] - predictor;
+            acc += error;
+
+            if (acc >= 0) {
+                out_byte |= (1 << bit_index);
+                predictor += step;
+                if (predictor > 127) {
+                    predictor = 127;
+                }
+                acc -= step;
+            } else {
+                predictor -= step;
+                if (predictor < 0) {
+                    predictor = 0;
+                }
+                acc += step;
+            }
         }
 
-        bit_position++;
-        if (bit_position == 8) {
-            bit_position = 0;
-            byte_index++;
-        }
-
-        previous_value = current_value;
+        output[i] = out_byte;
     }
 
-    return (bit_position == 0) ? byte_index : byte_index + 1;
+    return total_bytes;
 }
 
-int decode_dpcm(const uint8_t *input, int input_size, int8_t *output) {
-    int bit_position = 0;
-    int byte_index = 0;
-    int previous_value = 0;
+int decode_dpcm(const uint8_t *input, int input_size, uint8_t *output)
+{
+    int level = 64;
 
-    for (int i = 0; i < input_size * 8; ++i) {
-        int encoded_bit = (input[byte_index] >> (7 - bit_position)) & 1;
+    for (int i = 0; i < input_size; i++) {
+        uint8_t byte_val = input[i];
 
-        int current_value = previous_value + (encoded_bit == 1 ? 1 : -1);
-        output[i] = current_value;
+        for (int bit_index = 0; bit_index < 8; bit_index++) {
+            int bit = (byte_val & 1);
+            byte_val >>= 1;
 
-        previous_value = current_value;
-        bit_position++;
-        if (bit_position == 8) {
-            bit_position = 0;
-            byte_index++;
+            if (bit) {
+                if (level <= 125) {
+                    level += 2;
+                } else {
+                    level = 127;
+                }
+            } else {
+                if (level >= 2) {
+                    level -= 2;
+                } else {
+                    level = 0;
+                }
+            }
+
+            output[i * 8 + bit_index] = (uint8_t)level;
         }
     }
 

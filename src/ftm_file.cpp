@@ -1,4 +1,5 @@
 #include "ftm_file.h"
+
 extern int errno;
 extern bool _debug_print;
 
@@ -7,6 +8,8 @@ FTM_FILE::FTM_FILE() {
 }
 
 void FTM_FILE::new_ftm() {
+    memset(current_file, 0, sizeof(current_file));
+
     FTM_HEADER hd_new;
     PARAMS_BLOCK pr_new;
     INFO_BLOCK nf_new;
@@ -119,10 +122,11 @@ int FTM_FILE::open_ftm(const char *filename) {
     }
     DBG_PRINTF("\nOpen %.18s\n", header.id);
     DBG_PRINTF("VERSION: 0x%X\n", header.version);
+    strcpy(current_file, filename);
     return 0;
 }
 
-int FTM_FILE::save_ftm(const char *filename) {
+int FTM_FILE::save_as_ftm(const char *filename) {
     ftm_file = fopen(filename, "wb");
 
     if (ftm_file == NULL) {
@@ -153,6 +157,13 @@ int FTM_FILE::save_ftm(const char *filename) {
 
     fclose(ftm_file);
 
+    strcpy(current_file, filename);
+
+    return 0;
+}
+
+int FTM_FILE::save_ftm() {
+    save_as_ftm(current_file);
     return 0;
 }
 
@@ -613,7 +624,7 @@ void FTM_FILE::read_dpcm_block() {
     DBG_PRINTF("VERSION: %d\n", dpcm_block.version);
     fread(&dpcm_block.size, 4, 1, ftm_file);
     DBG_PRINTF("SIZE: %d\n", dpcm_block.size);
-    fread(&dpcm_block.sample_num, 2, 1, ftm_file);
+    fread(&dpcm_block.sample_num, 1, 1, ftm_file);
     DBG_PRINTF("SAMPLE_NUM: %d\n", dpcm_block.sample_num);
 }
 
@@ -623,21 +634,25 @@ void FTM_FILE::read_dpcm_data() {
         DBG_PRINTF("NO DPCM SAMPLE\n");
         return;
     }
-    dpcm_samples.resize(dpcm_block.sample_num);
-    DBG_PRINTF("RESIZE DPCM_SAMPLES TO %d\n", dpcm_samples.size());
     for (int i = 0; i < dpcm_block.sample_num; i++) {
-        DBG_PRINTF("\n#%d\n", i);
-        fread(&dpcm_samples[i].name_len, 4, 1, ftm_file);
-        fread(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
-        DBG_PRINTF("NAME(SIZE=%d): %s\n", dpcm_samples[i].name_len, dpcm_samples[i].name);
-        fread(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
-        dpcm_samples[i].dpcm_data.resize(dpcm_samples[i].sample_size_byte + 1);
+        uint8_t index;
+        fread(&index, 1, 1, ftm_file);
+        if (index >= dpcm_samples.size()) {
+            dpcm_samples.resize(index + 1);
+        }
+        dpcm_samples[index].index = index;
+        DBG_PRINTF("\n#%d\n", dpcm_samples[index].index);
+        fread(&dpcm_samples[index].name_len, 4, 1, ftm_file);
+        fread(dpcm_samples[index].name, 1, dpcm_samples[index].name_len, ftm_file);
+        DBG_PRINTF("NAME(SIZE=%d): %s\n", dpcm_samples[index].name_len, dpcm_samples[index].name);
+        fread(&dpcm_samples[index].sample_size_byte, 4, 1, ftm_file);
+        dpcm_samples[index].dpcm_data.resize(dpcm_samples[index].sample_size_byte);
         // DBG_PRINTF("FTELL: %d\n", ftell(ftm_file));
-        fread(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte + 1, ftm_file);
-        DBG_PRINTF("SAMPLE SIZE(byte) = %d\n", dpcm_samples[i].sample_size_byte);
+        fread(dpcm_samples[index].dpcm_data.data(), 1, dpcm_samples[index].sample_size_byte, ftm_file);
+        DBG_PRINTF("SAMPLE SIZE(byte) = %d\n", dpcm_samples[index].sample_size_byte);
         DBG_PRINTF("DECODE...\n");
-        dpcm_samples[i].pcm_data.resize((dpcm_samples[i].sample_size_byte + 1) * 8);
-        decode_dpcm(dpcm_samples[i].dpcm_data.data(), dpcm_samples[i].sample_size_byte + 1, dpcm_samples[i].pcm_data.data());
+        dpcm_samples[index].pcm_data.resize(dpcm_samples[index].sample_size_byte * 8);
+        decode_dpcm(dpcm_samples[index].dpcm_data.data(), dpcm_samples[index].sample_size_byte, dpcm_samples[index].pcm_data.data());
         // DBG_PRINTF("FTELL: %d\n", ftell(ftm_file));
         DBG_PRINTF("SECCESS.\n");
     }
@@ -655,11 +670,15 @@ void FTM_FILE::write_dpcm() {
     
     size_t tol_size = 2;
     for (int i = 0; i < dpcm_samples.size(); i++) {
-        fwrite(&dpcm_samples[i].name_len, 4, 1, ftm_file);
-        fwrite(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
-        fwrite(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
-        fwrite(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte + 1, ftm_file);
-        tol_size += 4 + dpcm_samples[i].name_len + 4 + dpcm_samples[i].sample_size_byte + 1;
+        dpcm_samples[i].index = i;
+        if (dpcm_samples[i].sample_size_byte) {
+            fwrite(&dpcm_samples[i].index, 1, 1, ftm_file);
+            fwrite(&dpcm_samples[i].name_len, 4, 1, ftm_file);
+            fwrite(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
+            fwrite(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
+            fwrite(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte, ftm_file);
+            tol_size += 4 + dpcm_samples[i].name_len + 4 + dpcm_samples[i].sample_size_byte;
+        }
     }
 
     size_t block_end_addr = ftell(ftm_file);
@@ -724,8 +743,6 @@ int FTM_FILE::read_ftm_all() {
         fclose(ftm_file);
         return NO_SUPPORT_MULTITRACK;
     }
-
-    read_header_block();
 
     read_instrument_block();
     read_instrument_data();

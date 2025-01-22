@@ -96,15 +96,16 @@ typedef struct __attribute__((packed)) {
     char id[16] = "DPCM SAMPLES";
     uint32_t version = 1;
     uint32_t size = 1;
-    uint16_t sample_num = 0;
+    uint8_t sample_num = 0;
 } DPCM_SAMPLE_BLOCK;
 
 typedef struct {
+    uint8_t index;
     uint32_t name_len;
     char name[64];
     uint32_t sample_size_byte;
     std::vector<uint8_t> dpcm_data;
-    std::vector<int8_t> pcm_data;
+    std::vector<uint8_t> pcm_data;
 } dpcm_sample_t;
 
 typedef struct __attribute__((packed)) {
@@ -242,6 +243,8 @@ public:
     PATTERN_BLOCK pt_block;
     DPCM_SAMPLE_BLOCK dpcm_block;
 
+    char current_file[1024];
+
     uint32_t sequ_max = 0;
     uint32_t pattern_num = 0;
 
@@ -253,7 +256,8 @@ public:
     void remove_inst(int n);
 
     int open_ftm(const char *filename);
-    int save_ftm(const char *filename);
+    int save_as_ftm(const char *filename);
+    int save_ftm();
 
     void write_file_header();
 
