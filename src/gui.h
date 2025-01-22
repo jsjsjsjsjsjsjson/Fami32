@@ -840,7 +840,7 @@ void open_file_page() {
         }
         display.display();
         ftm.new_ftm();
-        keypad_pause();
+        vTaskDelay(2048);
         return;
     }
     ret = ftm.read_ftm_all();
@@ -861,7 +861,7 @@ void open_file_page() {
         }
         display.display();
         ftm.new_ftm();
-        keypad_pause();
+        vTaskDelay(2048);
         return;
     }
     player.reload();

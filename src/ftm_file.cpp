@@ -714,12 +714,14 @@ int FTM_FILE::read_ftm_all() {
     }
 
     if (read_param_block()) {
+        fclose(ftm_file);
         return NO_SUPPORT_EXTCHIP;
     }
     
     read_info_block();
 
-    if (read_param_block()) {
+    if (read_header_block()) {
+        fclose(ftm_file);
         return NO_SUPPORT_MULTITRACK;
     }
 
