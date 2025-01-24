@@ -91,15 +91,17 @@ void sound_task(void *arg) {
     i2s_channel_init_std_mode(tx_handle, &std_cfg);
     i2s_channel_enable(tx_handle);
 
+    Serial.begin(921600);
+
     size_t writed;
 
     for (;;) {
         sound_task_stat = true;
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+        // serial_audio(player.get_buf(), player.get_buf_size());
         sound_task_stat = false;
         vTaskDelay(1);
-        // serial_audio(player.get_buf(), player.get_buf_size());
     }
 }
 
@@ -205,6 +207,8 @@ void setup() {
         display.setCursor(47, 33);
         display.print("FAMI32");
         display.setFont(&rismol35);
+        display.setCursor(0, 0);
+        display.printf("V%d.%d", FAMI32_VERSION, FAMI32_SUBVERSION);
         display.setCursor(0, 47);
         display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
         for (int x = 0; x < 128; x++) {
@@ -300,6 +304,8 @@ void setup() {
         display.setCursor(47, 33);
         display.print("FAMI32");
         display.setFont(&rismol35);
+        display.setCursor(0, 0);
+        display.printf("V%d.%d", FAMI32_VERSION, FAMI32_SUBVERSION);
         display.setCursor(0, 47);
         display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
         for (int x = 0; x < 128; x++) {

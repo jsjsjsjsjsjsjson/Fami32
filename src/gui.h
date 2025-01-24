@@ -708,10 +708,10 @@ int fullScreenMenu(const char* name, const char* menuStr[], uint8_t maxMenuPos, 
             if (i == menuPos) {
                 display.fillRect(0, itemYPos + 1, 128, 7, SSD1306_WHITE);
                 display.setTextColor(SSD1306_BLACK);
-                display.setCursor(4, itemYPos + 2);
+                display.setCursor(2, itemYPos + 2);
             } else {
                 display.setTextColor(SSD1306_WHITE);
-                display.setCursor(3, itemYPos + 2);
+                display.setCursor(1, itemYPos + 2);
             }
 
             if (i >= maxMenuPos) {
@@ -820,7 +820,7 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
 
 void vol_set_page() {
     int vol_last = g_vol;
-    num_set_menu_int("VOLUME", 0, 32, 1, &g_vol, 0, 0, 68, 32);
+    num_set_menu_int("VOLUME", 0, 64, 1, &g_vol, 0, 0, 68, 32);
     if (g_vol != vol_last) {
         drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
         display.display();
@@ -974,6 +974,10 @@ void channel_setting_page() {
     default:
         break;
     }
+}
+
+void device_setting() {
+
 }
 
 void samp_rate_set() {
@@ -1354,6 +1358,34 @@ void tracker_menu() {
     }
 }
 
+uint8_t fx_help_menu() {
+    static const char *fx_help_str[20] = {
+        "Fxx: Set Tempo(x<10)/Speed(x>10)",
+        "Bxx: Jump to frame xx",
+        "Dxx: Jump to next frame's row xx",
+        "Cxx: Halt song",
+        "3xx: Auto Portamento,xx = speed",
+        "0xy: Arp, x=2nd note,y=3rd note",
+        "4xy: Vibrato, x=speed, y=depth",
+        "7xy: Tremolo, x=speed, y=depth",
+        "Pxx: Fine pitch (ofst = xx - 80)",
+        "Gxx: Row delay, x = Num Of Tick",
+        "Zxx: Set DMC Channel Level",
+        "1xx: Slide up, xx = speed",
+        "2xx: Slide down, xx = speed",
+        "V0x: Set Duty/Mode, x = mode",
+        "Yxx: Set DMC Offset, xx = offset",
+        "Qxy: PortUp, x=speed, y=+note",
+        "Rxy: PortDown, x=speed, y=-note",
+        "Axy: VolSlide, x=up, y=down",
+        "Sxx: Delay cut, x = Num Of Tick",
+        "W0x: Set DMC pitch"
+    };
+    uint8_t ret = fullScreenMenu("EFFECT HELP", fx_help_str, 20, NULL, 0);
+    if (ret == 255) return NO_EFX;
+    return vaild_fx_table[ret];
+}
+
 void channel_menu() {
     static uint8_t x_pos = 0;
     display.setFont(&font3x5);
@@ -1451,6 +1483,23 @@ void channel_menu() {
             }
         }
 
+        display.setCursor(107, 12);
+        if (player.get_mute(channel_sel_pos)) {
+            display.printf("MUTE\n\n");
+        } else {
+            display.printf("\n\n");
+        }
+        display.setCursor(107, display.getCursorY());
+        display.printf("CHAN:\n");
+        display.setCursor(107, display.getCursorY());
+        display.printf("%d\n\n", player.channel[channel_sel_pos].get_inst()->index);
+        display.setCursor(107, display.getCursorY());
+        display.printf("SEL:\n");
+        display.setCursor(107, display.getCursorY());
+        display.printf("%d\n\n", inst_sel_pos);
+        display.setCursor(107, display.getCursorY() - 1);
+        display.printf("FX:%d", ftm.ch_fx_count(channel_sel_pos));
+
         display.display();
 
         uint8_t note_set = 0;
@@ -1488,7 +1537,7 @@ void channel_menu() {
                         else if (((x_pos - 4) % 3) == 2)
                             pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B2(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, e.bit.KEY);
                         else
-                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = e.bit.KEY;
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = fast_fx_table[e.bit.KEY];
                     }
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                 }
@@ -1541,7 +1590,13 @@ void channel_menu() {
                     }
                     copy_mode = false;
                 } else if (e.bit.KEY == KEY_MENU) {
-                    main_option_page();
+                    if (edit_mode && (((x_pos - 4) % 3) == 0)) {
+                        unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
+                        pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = fx_help_menu();
+                        ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                    } else {
+                        main_option_page();
+                    }
                 } else if (e.bit.KEY == KEY_P) {
                     player.jmp_to_frame(player.get_frame() + 1);
                     player.set_row(player.get_row() + 1);
@@ -2053,7 +2108,7 @@ void instrument_menu() {
     if (inst_sel_pos >= ftm.inst_block.inst_num) {
         inst_sel_pos = ftm.inst_block.inst_num - 1;
     }
-    int pageStart = 0;
+    static int pageStart = 0;
     const int itemsPerPage = 6;
     for (;;) {
         display.clearDisplay();

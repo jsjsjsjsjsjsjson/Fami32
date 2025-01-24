@@ -681,6 +681,8 @@ public:
         if (mode > 5) {
             set_noise_rate((uint8_t)period_ref & 15);
         } else {
+            if (period_ref < 12) period_ref = 12.0f;
+            else if (period_ref > 2048) period_ref = 2048.0f;
             period = period_ref;
             freq = period2freq(period - period_offset);
             // printf("PERIOD_OFF: %.1f\n", period_offset);
@@ -758,7 +760,7 @@ public:
             chl_mode = (WAVE_TYPE)((m&1) + NOISE0);
             DBG_PRINTF("SET_NOISE_MODE(CHL): %d\n", chl_mode);
         } else if (mode != TRIANGULAR) {
-            chl_mode = m;
+            chl_mode = (WAVE_TYPE)(m & 3);
         }
     }
 
@@ -1051,7 +1053,7 @@ public:
             } else if (fxdata[i].fx_cmd == 0x17) {
                 channel[c].set_delay_cut(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET DELAY_CUT -> %d\n", fxdata[i].fx_var);
-            } else if (fxdata[i].fx_cmd == 0x1F) {
+            } else if (fxdata[i].fx_cmd == 0x1D) {
                 channel[c].set_dpcm_pitch(fxdata[i].fx_var);
                 DBG_PRINTF("C%d: SET DPCM PITCH -> %d\n", fxdata[i].fx_var);
             }
