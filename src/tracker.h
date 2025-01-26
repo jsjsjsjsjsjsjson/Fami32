@@ -386,7 +386,6 @@ public:
     void set_period_offset(int8_t var) {
         int8_t per_off_last = period_offset;
         period_offset = var;
-        if (per_off_last != period_offset) set_period(get_period());
     }
 
     void set_port_up(uint8_t spd, uint8_t offset) {
@@ -433,13 +432,16 @@ public:
 
         rel_vol = env_vol * (chl_vol + tre_var);
 
-        if (vib_spd && vib_dep) {
-            vib_pos = (vib_pos + vib_spd) & 63;
-            int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
-            pos_count = (period2freq(get_period() + vib_var) / SAMP_RATE) * 32;
-        }
-
         if (mode < 5) {
+            freq = period2freq(period - period_offset);
+            pos_count = (freq / SAMP_RATE) * 32;
+
+            if (vib_spd && vib_dep) {
+                vib_pos = (vib_pos + vib_spd) & 63;
+                int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
+                pos_count = (period2freq(get_period() + vib_var) / SAMP_RATE) * 32;
+            }
+
             if (mode == TRIANGULAR) {
                 rel_vol = rel_vol ? 225 : 0;
             }
@@ -684,9 +686,6 @@ public:
             if (period_ref < 12) period_ref = 12.0f;
             else if (period_ref > 2048) period_ref = 2048.0f;
             period = period_ref;
-            freq = period2freq(period - period_offset);
-            // printf("PERIOD_OFF: %.1f\n", period_offset);
-            pos_count = (freq / SAMP_RATE) * 32;
         }
         // DBG_PRINTF("SET_PERIOD: P=%f, F=%f, C=%f\n", period, freq, pos_count);
     }
@@ -703,7 +702,6 @@ public:
         } else if (mode < 5) {
             rely_note = note;
             period = note2period(note);
-            freq = period2freq(period - period_offset);
             pos_count = (freq / SAMP_RATE) * 32;
         } else if (mode == DPCM_SAMPLE) {
             sample_num = inst_proc.get_inst()->dpcm[note - 24].index - 1;
