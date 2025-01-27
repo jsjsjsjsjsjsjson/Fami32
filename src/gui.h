@@ -1958,6 +1958,8 @@ void sequence_editor(instrument_t *inst) {
                     int ret = menu("SELECT SEQUENCE", sequ_name, 5, NULL, 68, 53, 0, 0, sequ_type);
                     if (ret != -1) {
                         sequ_sel_index = 0;
+                        pageEnd = 32;
+                        pageStart = 0;
                         sequ_type = ret;
                     }
                 } else if (e.bit.KEY == KEY_NAVI) {
