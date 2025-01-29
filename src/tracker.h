@@ -596,12 +596,17 @@ public:
             }
 
             if (arp_fx_n1 || arp_fx_n2) {
-                if (arp_fx_pos) {
-                    set_note_rely(base_note + arp_fx_n2);
-                } else {
+                if (arp_fx_pos == 0) {
+                    set_note_rely(base_note);
+                } else if (arp_fx_pos == 1) {
                     set_note_rely(base_note + arp_fx_n1);
+                } else if (arp_fx_pos == 2) {
+                    set_note_rely(base_note + arp_fx_n2);
                 }
-                arp_fx_pos = !arp_fx_pos;
+                arp_fx_pos++;
+                if (arp_fx_pos > 2) {
+                    arp_fx_pos = 0;
+                }
             }
         }
 
