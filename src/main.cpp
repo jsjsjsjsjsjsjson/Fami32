@@ -24,6 +24,8 @@ i2s_chan_handle_t tx_handle;
 
 TaskHandle_t SOUND_TASK_HD = NULL;
 
+TaskHandle_t GUI_TASK = NULL;
+
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
 
 Adafruit_Keypad keypad = Adafruit_Keypad(makeKeymap(KEYPAD_MAP),
@@ -146,6 +148,23 @@ void set_debug_cmd(int argc, const char* argv[]) {
     _debug_print = !_debug_print;
 }
 
+void ssd1306_command_cmd(int argc, const char* argv[]) {
+    if (argc < 2) {
+        printf("%s <data>\n");
+        return;
+    }
+    printf("SSD1306 COMMANDS: ");
+    for (int i = 0; i < (argc - 1); i++) {
+        printf("%02X ", strtol(argv[i + 1], NULL, 0));
+    }
+    printf("\n");
+    printf("SEND...\n");
+    display.ssd1306_command(0xE3); // NOP
+    for (int i = 0; i < (argc - 1); i++) {
+        display.ssd1306_command(strtol(argv[i + 1], NULL, 0));
+    }
+}
+
 #include "free_heap.h"
 
 void shell(void *arg) {
@@ -164,9 +183,10 @@ void shell(void *arg) {
     terminal.addCommand("format_fs", format_fs);
     terminal.addCommand("set_debug", set_debug_cmd);
     terminal.addCommand("set_base_freq", set_base_freq_cmd);
+    terminal.addCommand("ssd1306", ssd1306_command_cmd);
     for (;;) {
         terminal.update();
-        vTaskDelay(2);
+        vTaskDelay(8);
     }
 }
 
@@ -193,7 +213,7 @@ const uint8_t bayerMatrix[4][4] = {
 
 void setup() {
     SPI.begin(DISPLAY_SCL, -1, DISPLAY_SDA);
-    display.begin();
+    display.begin(SSD1306_EXTERNALVCC);
     display.clearDisplay();
     display.display();
 
@@ -319,8 +339,8 @@ void setup() {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreate(gui_task, "GUI", 20480, NULL, 6, NULL); // &OSC_TASK);
-    xTaskCreate(shell, "SHELL", 4096, NULL, 4, NULL);
+    xTaskCreate(gui_task, "GUI", 20480, NULL, 6, &GUI_TASK);
+    xTaskCreate(shell, "SHELL", 8192, NULL, 10, NULL);
 }
 
 void loop() {

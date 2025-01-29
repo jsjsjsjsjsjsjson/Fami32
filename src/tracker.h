@@ -232,6 +232,8 @@ private:
 
     int8_t period_offset = 0;
 
+    float period_rely;
+
     uint8_t delay_cut_count = 0;
     bool delay_cut_status = false;
 
@@ -433,13 +435,15 @@ public:
         rel_vol = env_vol * (chl_vol + tre_var);
 
         if (mode < 5) {
-            freq = period2freq(period - period_offset);
+            period_rely = period - period_offset;
+            freq = period2freq(period_rely);
             pos_count = (freq / SAMP_RATE) * 32;
 
             if (vib_spd && vib_dep) {
                 vib_pos = (vib_pos + vib_spd) & 63;
                 int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
-                pos_count = (period2freq(get_period() + vib_var) / SAMP_RATE) * 32;
+                period_rely = get_period() + vib_var;
+                pos_count = (period2freq(period_rely) / SAMP_RATE) * 32;
             }
 
             if (mode == TRIANGULAR) {
@@ -728,6 +732,15 @@ public:
 
     float get_period() {
         return period - period_offset;
+    }
+
+    float get_period_rel() {
+        if (mode < DPCM_SAMPLE)
+            return period_rely;
+        else if (mode > DPCM_SAMPLE)
+            return get_noise_rate();
+        else
+            return sample_num;
     }
 
     void set_noise_rate(uint8_t rate) {

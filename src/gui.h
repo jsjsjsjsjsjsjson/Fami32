@@ -11,6 +11,8 @@
 #include "fonts/rismol_5_7.h"
 #include "fonts/font4x6.h"
 
+#include "ringbuf.h"
+
 extern "C" {
 #include "micro_config.h"
 }
@@ -831,8 +833,8 @@ void vol_set_page() {
 
 void menu_navi() {
     drawPinstript(0, 0, 128, 64);
-    static const char *menu_str[6] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSCILLOSCOPE"};
-    int ret = menu("MENU", menu_str, 6, NULL, 64, 45, 0, 0, main_menu_pos);
+    static const char *menu_str[7] = {"TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSCILLOSCOPE", "VISUALIZATION"};
+    int ret = menu("MENU", menu_str, 7, NULL, 64, 45, 0, 0, main_menu_pos);
     if (ret != -1)
         main_menu_pos = ret;
 }
@@ -2175,7 +2177,7 @@ void instrument_menu() {
         else if (channel_sel_pos == 4) 
             display.drawFastVLine(63 + (player.channel[4].get_samp_pos() * (64.0f / (float)player.channel[4].get_samp_len())), 58, 6, 1);
         else
-            display.drawFastVLine(63 + (64 - (player.channel[channel_sel_pos].get_period() / 32)), 58, 6, 1);
+            display.drawFastVLine(63 + roundf(period2note(player.channel[channel_sel_pos].get_period_rel()) * 0.5f), 58, 6, 1);
 
         display.display();
 
@@ -2437,6 +2439,108 @@ void song_info_menu() {
     }
 }
 
+void visual_menu() {
+    display.setTextColor(1);
+    static const char chn[5][4] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
+    ringbuf<uint8_t, 128> visual_buf[5];
+    ringbuf<uint8_t, 128> visual_buf_vol[5];
+    for (;;) {
+        display.clearDisplay();
+
+        for (int c = 0; c < 5; c++) {
+            uint8_t p;
+            uint8_t v;
+            if (c == 2) {
+                p = roundf(period2note(player.channel[c].get_period_rel() * 2)) - 12;
+                v = player.channel[c].get_rel_vol() ? 2 : 0;
+            } else {
+                p = roundf(period2note(player.channel[c].get_period_rel())) - 12;
+                v = (player.channel[c].get_rel_vol() + 55) / 56;
+            }
+            visual_buf[c].push(p);
+            visual_buf_vol[c].push(v);
+            display.setCursor(p - 5, 0);
+            display.print(chn[c]);
+        }
+
+        for (int y = 0; y < 123; y++) {
+            for (int c = 0; c < 5; c++) {
+                // display.drawPixel(visual_buf[c][127 - y], y, 1);
+                display.drawFastHLine(visual_buf[c][127 - y], y + 5, visual_buf_vol[c][127 - y], 1);
+                display.drawFastHLine(visual_buf[c][127 - y] - visual_buf_vol[c][127 - y] + 1, y + 5, visual_buf_vol[c][127 - y], 1);
+            }
+        }
+
+        display.setCursor(0, 47);
+        display.println(ftm.nf_block.title);
+        display.println(ftm.nf_block.author);
+        display.println(ftm.nf_block.copyright);
+
+        display.setCursor(102, 59);
+        display.printf("(%02X/%02X)", player.get_frame(), ftm.fr_block.frame_num - 1);
+
+        display.display();
+
+        // KEYPAD
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (copy_mode) {
+                        copy_mode = false;
+                        drawPopupBox("PROCESS...", 0, 0, 0, 0);
+                        display.display();
+                        copy_data(copy_start, player.get_row() + 1, channel_sel_pos);
+                    } else {
+                        if (player.get_play_status()) {
+                            pause_sound();
+                        } else {
+                            start_sound();
+                        }
+                    }
+                } else if (e.bit.KEY == KEY_BACK) {
+                    if (edit_mode) {
+                        unpk_item_t pt_tmp;
+                        ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                    }
+                    copy_mode = false;
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    menu_navi();
+                    break;
+                } else if (e.bit.KEY == KEY_MENU) {
+                    main_option_page();
+                } else if (e.bit.KEY == KEY_P) {
+                    player.jmp_to_frame(player.get_frame() + 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_S) {
+                    player.jmp_to_frame(player.get_frame() - 1);
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_UP) {
+                    player.set_row(player.get_row() - 1);
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    player.set_row(player.get_row() + 1);
+                } else if (e.bit.KEY == KEY_L) {
+                    set_channel_sel_pos(channel_sel_pos - 1);
+                } else if (e.bit.KEY == KEY_R) {
+                    set_channel_sel_pos(channel_sel_pos + 1);
+                } else if (e.bit.KEY == KEY_OCTU) {
+                    g_octv++;
+                } else if (e.bit.KEY == KEY_OCTD) {
+                    g_octv--;
+                }
+            }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            uint8_t note_set, octv_set;
+            update_touchpad_note(&note_set, &octv_set, e);
+        }
+
+        vTaskDelay(4);
+    }
+}
+
 void gui_task(void *arg) {
     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
     for(;;) {
@@ -2464,6 +2568,10 @@ void gui_task(void *arg) {
         
         case 5:
             osc_menu();
+            break;
+
+        case 6:
+            visual_menu();
             break;
 
         default:
