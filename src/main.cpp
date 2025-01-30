@@ -213,7 +213,7 @@ const uint8_t bayerMatrix[4][4] = {
 
 void setup() {
     SPI.begin(DISPLAY_SCL, -1, DISPLAY_SDA);
-    display.begin(SSD1306_EXTERNALVCC);
+    display.begin();
     display.clearDisplay();
     display.display();
 
