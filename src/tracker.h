@@ -114,8 +114,14 @@ public:
                 pos[i]++;
                 if (status[i] == SEQU_PLAYING) {
                     if (sequ->release != SEQ_FEAT_DISABLE) {
-                        if (pos[i] > sequ->release) {
-                            pos[i]--;
+                        if (sequ->loop == SEQ_FEAT_DISABLE) {
+                            if (pos[i] > sequ->release) {
+                                pos[i]--;
+                            }
+                        } else {
+                            if (pos[i] > sequ->loop) {
+                                pos[i] = sequ->release;
+                            }
                         }
                     }
                 } else if (status[i] == SEQU_RELEASE) {

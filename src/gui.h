@@ -61,6 +61,8 @@ extern TaskHandle_t SOUND_TASK_HD;
 extern bool sound_task_stat;
 extern i2s_chan_handle_t tx_handle;
 
+extern EASY_USB_MIDI USB_MIDI;
+
 static uint8_t main_menu_pos = 0;
 
 static int8_t channel_sel_pos = 0;
@@ -192,17 +194,29 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
     display.setFont(&rismol35);
 }
 
+void set_channel_sel_pos(int8_t p) {
+    if (p > 4) {
+        p = 0;
+    } else if (p < 0) {
+        p = 4;
+    }
+    // printf("SET_CHAN: %d\n", p);
+    channel_sel_pos = p;
+    if (edit_mode)
+        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+}
+
 void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
     if (e.bit.EVENT == KEY_JUST_PRESSED) {
         if (e.bit.KEY > 13) {
-            *note = e.bit.KEY - 1;
-            *octv = 0;
+            if (note != NULL) *note = e.bit.KEY - 1;
+            if (octv != NULL) *octv = 0;
         } else {
-            *note = (e.bit.KEY % 12) + 1;
-            *octv = g_octv + (e.bit.KEY / 12);
+            if (note != NULL) *note = (e.bit.KEY % 12) + 1;
+            if (octv != NULL) *octv = g_octv + (e.bit.KEY / 12);
             if (touch_note) {
                 player.channel[channel_sel_pos].set_inst(inst_sel_pos);
-                player.channel[channel_sel_pos].set_note(item2note(*note, *octv));
+                player.channel[channel_sel_pos].set_note(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)));
                 player.channel[channel_sel_pos].note_start();
             }
         }
@@ -213,15 +227,17 @@ void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
     }
 }
 
-void set_channel_sel_pos(int8_t p) {
-    if (p > 4) {
-        p = 0;
-    } else if (p < 0) {
-        p = 4;
+void update_midi_note(uint8_t *note, uint8_t *octv) {
+    midi_event_packed_t e = USB_MIDI.read();
+    if (e.event == MIDI_CIN_NOTE_ON) {
+        if (note != NULL) *note = (e.note % 12) + 1;
+        if (octv != NULL) *octv = (e.note / 12) - 1;
+    } else if (e.event == MIDI_CIN_NOTE_OFF) {
+        if (player.get_play_status()) {
+            if (note != NULL) *note = 14;
+            if (octv != NULL) *octv = 0;
+        }
     }
-    channel_sel_pos = p;
-    if (edit_mode)
-        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
 }
 
 void change_edit_mode() {
@@ -669,8 +685,10 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -1283,12 +1301,18 @@ void tracker_menu() {
         }
         display.display();
 
-        if (touchKeypad.available()) {
+        if (touchKeypad.available() || USB_MIDI.available()) {
             uint8_t note_set = 0;
             uint8_t octv_set = 0;
-            touchKeypadEvent e = touchKeypad.read();
 
-            update_touchpad_note(&note_set, &octv_set, e);
+            while (USB_MIDI.available()) 
+                update_midi_note(&note_set, &octv_set);
+
+            if (touchKeypad.available()) {
+                touchKeypadEvent e = touchKeypad.read();
+                update_touchpad_note(&note_set, &octv_set, e);
+            }
+
             if (note_set) {
                 printf("INPUT_NOTE_SET: %d\n", note_set);
                 if (edit_mode) {
@@ -1302,7 +1326,7 @@ void tracker_menu() {
                         pt_tmp.instrument = inst_sel_pos;
                     }
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
-                    player.set_row(player.get_row() + 1);
+                    player.set_row(player.get_row());
                 }
             }
         }
@@ -1508,24 +1532,29 @@ void channel_menu() {
         uint8_t octv_set = 0;
 
         if (edit_mode) {
-            if (touchKeypad.available()) {
-                touchKeypadEvent e = touchKeypad.read();
-                if (x_pos == 0) {
+            if (x_pos == 0) {
+                if (touchKeypad.available()) {
+                    touchKeypadEvent e = touchKeypad.read();
                     update_touchpad_note(&note_set, &octv_set, e);
-                    if (note_set) {
-                        printf("INPUT_NOTE_SET: %d\n", note_set);
-                        unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
-                        pt_tmp.note = note_set;
-                        if (pt_tmp.note > 12) {
-                            pt_tmp.octave = 0;
-                        } else {
-                            pt_tmp.octave = octv_set;
-                            pt_tmp.instrument = inst_sel_pos;
-                        }
-                        ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
-                        player.set_row(player.get_row() + 1);
+                }
+                if (USB_MIDI.available()) {
+                    update_midi_note(&note_set, &octv_set);
+                }
+                if (note_set) {
+                    printf("INPUT_NOTE_SET: %d\n", note_set);
+                    unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
+                    pt_tmp.note = note_set;
+                    if (pt_tmp.note > 12) {
+                        pt_tmp.octave = 0;
+                    } else {
+                        pt_tmp.octave = octv_set;
+                        pt_tmp.instrument = inst_sel_pos;
                     }
-                } else if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                    ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                }
+            } else if (touchKeypad.available()) {
+                touchKeypadEvent e = touchKeypad.read();
+                if (e.bit.EVENT == KEY_JUST_PRESSED) {
                     unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                     if (x_pos == 1) {
                         pt_tmp.instrument = SET_HEX_B1(pt_tmp.instrument, e.bit.KEY);
@@ -1548,6 +1577,9 @@ void channel_menu() {
             if (touchKeypad.available()) {
                 touchKeypadEvent e = touchKeypad.read();
                 update_touchpad_note(&note_set, &octv_set, e);
+            }
+            while (USB_MIDI.available()) {
+                update_midi_note(&note_set, &octv_set);
             }
         }
 
@@ -1798,8 +1830,10 @@ void frames_menu() {
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2068,8 +2102,10 @@ void sequence_editor(instrument_t *inst) {
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2219,8 +2255,10 @@ void instrument_menu() {
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2324,8 +2362,10 @@ void osc_menu() {
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2431,8 +2471,10 @@ void song_info_menu() {
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(16);
@@ -2533,8 +2575,10 @@ void visual_menu() {
 
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
-            uint8_t note_set, octv_set;
-            update_touchpad_note(&note_set, &octv_set, e);
+            update_touchpad_note(NULL, NULL, e);
+        }
+        while (USB_MIDI.available()) {
+            update_midi_note(NULL, NULL);
         }
 
         vTaskDelay(4);

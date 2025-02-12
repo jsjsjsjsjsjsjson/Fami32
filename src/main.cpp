@@ -9,6 +9,7 @@
 #include "ftm_file.h"
 #include "tracker.h"
 #include "dirent.h"
+#include <easy_usb_midi.h>
 #include "SerialTerminal.h"
 #include "gui.h"
 
@@ -25,6 +26,8 @@ i2s_chan_handle_t tx_handle;
 TaskHandle_t SOUND_TASK_HD = NULL;
 
 TaskHandle_t GUI_TASK = NULL;
+
+EASY_USB_MIDI USB_MIDI;
 
 Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
 
@@ -99,6 +102,7 @@ void sound_task(void *arg) {
 
     for (;;) {
         sound_task_stat = true;
+        USB_MIDI.tick();
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
         // serial_audio(player.get_buf(), player.get_buf_size());
@@ -195,7 +199,7 @@ void keypad_task(void *arg) {
     for (;;) {
         keypad.tick();
         touchKeypad.tick();
-        vTaskDelay(4);
+        vTaskDelay(1);
     }
 }
 
@@ -210,6 +214,29 @@ const uint8_t bayerMatrix[4][4] = {
     {  48, 176,  16, 144 },
     { 240, 112, 208,  80 }
 };
+
+void midi_callback(midi_event_packed_t e) {
+    set_channel_sel_pos(e.ch);
+    if (e.event == MIDI_CIN_NOTE_ON) {
+        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+        player.channel[channel_sel_pos].set_note(e.note);
+        player.channel[channel_sel_pos].set_vol(e.vol >> 3);
+        player.channel[channel_sel_pos].note_start();
+    } else if (e.event == MIDI_CIN_NOTE_OFF) {
+        player.channel[channel_sel_pos].note_end();
+    } else if (e.event == MIDI_CIN_CONTROL_CHANGE) {
+        if (e.note == 0x20) {
+            uint8_t set_prog = e.vol;
+            if (set_prog >= ftm.inst_block.inst_num) {
+                set_prog = ftm.inst_block.inst_num - 1;
+            }
+            inst_sel_pos = set_prog;
+        }
+    } else {
+        player.channel[channel_sel_pos].note_cut();
+        printf("UNKNOW USB MIDI EVENT: 0x%X (%d) -> DATA=%02X %02X\n", e.event, e.event, e.note, e.vol);
+    }
+}
 
 void setup() {
     SPI.begin(DISPLAY_SCL, -1, DISPLAY_SDA);
@@ -300,6 +327,9 @@ void setup() {
     if (get_config_value("VOLUME", CONFIG_INT, &g_vol) == CONFIG_SUCCESS) {
         printf("VOLUME: %d\n", g_vol);
     }
+
+    USB_MIDI.begin();
+    USB_MIDI.onMidiEvent(midi_callback);
 
     display.setCursor(0, 59);
     display.printf("Press any key to continue...");
