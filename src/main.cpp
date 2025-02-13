@@ -14,6 +14,7 @@
 #include "gui.h"
 
 bool _debug_print = false;
+bool _midi_output = false;
 
 extern "C" {
 #include "ls.h"
@@ -146,10 +147,12 @@ void set_base_freq_cmd(int argc, const char* argv[]) {
     printf("BASE FREQ SET TO -> %d\n", (int)BASE_FREQ_HZ);
 }
 
-extern bool _debug_print;
-
 void set_debug_cmd(int argc, const char* argv[]) {
     _debug_print = !_debug_print;
+}
+
+void set_midi_out_cmd(int argc, const char* argv[]) {
+    _midi_output = !_midi_output;
 }
 
 void ssd1306_command_cmd(int argc, const char* argv[]) {
@@ -186,6 +189,7 @@ void shell(void *arg) {
     terminal.addCommand("fast_test", fast_test);
     terminal.addCommand("format_fs", format_fs);
     terminal.addCommand("set_debug", set_debug_cmd);
+    terminal.addCommand("set_midi_out", set_midi_out_cmd);
     terminal.addCommand("set_base_freq", set_base_freq_cmd);
     terminal.addCommand("ssd1306", ssd1306_command_cmd);
     for (;;) {
@@ -216,6 +220,7 @@ const uint8_t bayerMatrix[4][4] = {
 };
 
 void midi_callback(midi_event_packed_t e) {
+    printf("MIDI: %X%X %X%X %02X %02X\n", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
     set_channel_sel_pos(e.ch);
     if (e.event == MIDI_CIN_NOTE_ON) {
         player.channel[channel_sel_pos].set_inst(inst_sel_pos);
@@ -231,7 +236,15 @@ void midi_callback(midi_event_packed_t e) {
                 set_prog = ftm.inst_block.inst_num - 1;
             }
             inst_sel_pos = set_prog;
+        } if (e.note == 0x7B) {
+            player.channel[e.ch % 5].note_cut();
+            printf("ALL NOTES OFF IN CHANNEL%d\n", e.ch % 5);
+        } else {
+            printf("UNKNOW CC: CMD=%02X, PARAM=%02X\n", e.note, e.vol);
         }
+    } else if (e.event == MIDI_CIN_PITCH_BEND_CHANGE) {
+        BASE_FREQ_HZ = 440 + (1024 - (((e.vol << 8) | e.note) / 16));
+        printf("FINETUNE: %d, PITCH_BEND: 0x%04X\n", BASE_FREQ_HZ, (e.vol << 8) | e.note);
     } else {
         player.channel[channel_sel_pos].note_cut();
         printf("UNKNOW USB MIDI EVENT: 0x%X (%d) -> DATA=%02X %02X\n", e.event, e.event, e.note, e.vol);

@@ -219,19 +219,26 @@ void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
                 player.channel[channel_sel_pos].set_note(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)));
                 player.channel[channel_sel_pos].note_start();
             }
+            if (_midi_output) {
+                USB_MIDI.MIDI.noteOn(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)), 120, channel_sel_pos);
+            }
         }
     } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
         if (touch_note) {
             player.channel[channel_sel_pos].note_end();
+            if (_midi_output) {
+                USB_MIDI.MIDI.noteOff(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)), 120, channel_sel_pos);
+            }
         }
     }
 }
 
-void update_midi_note(uint8_t *note, uint8_t *octv) {
+void update_midi_note(uint8_t *note, uint8_t *octv, uint8_t *vol) {
     midi_event_packed_t e = USB_MIDI.read();
     if (e.event == MIDI_CIN_NOTE_ON) {
         if (note != NULL) *note = (e.note % 12) + 1;
-        if (octv != NULL) *octv = (e.note / 12) - 1;
+        if (octv != NULL) *octv = (e.note / 12) - 2;
+        if (vol != NULL) *vol = e.vol >> 3;
     } else if (e.event == MIDI_CIN_NOTE_OFF) {
         if (player.get_play_status()) {
             if (note != NULL) *note = 14;
@@ -316,13 +323,18 @@ void drawChessboardWithNegativeSize(int16_t x, int16_t y, int16_t w, int16_t h) 
 void pause_sound() {
     player.stop_play();
     size_t writed;
-    int timer = 0;
-    while (sound_task_stat) {
-        timer++;
-        if (timer > 64) {
-            break;
+    // int timer = 0;
+    // while (sound_task_stat) {
+    //     timer++;
+    //     if (timer > 64) {
+    //         break;
+    //     }
+    //     vTaskDelay(1);
+    // }
+    if (_midi_output) {
+        for (int i = 0; i < 5; i++ ) {
+            USB_MIDI.MIDI.noteOff(0, 0, i);
         }
-        vTaskDelay(1);
     }
     memset(player.get_buf(), 0, player.get_buf_size_byte());
     i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
@@ -688,7 +700,7 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -1009,7 +1021,7 @@ void samp_rate_set() {
 }
 
 void eng_speed_set() {
-    num_set_menu_int("ENGINE SPEED", 1, 120, 1, &ENG_SPEED, 0, 0, 128, 32);
+    num_set_menu_int("ENGINE SPEED", 1, 240, 1, &ENG_SPEED, 0, 0, 128, 32);
     setting_change = true;
     if (set_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED) == CONFIG_SUCCESS) {
         printf("Updated 'ENGINE_SPEED' to %d\n", ENG_SPEED);
@@ -1304,9 +1316,10 @@ void tracker_menu() {
         if (touchKeypad.available() || USB_MIDI.available()) {
             uint8_t note_set = 0;
             uint8_t octv_set = 0;
+            uint8_t vol_set = NO_VOL;
 
             while (USB_MIDI.available()) 
-                update_midi_note(&note_set, &octv_set);
+                update_midi_note(&note_set, &octv_set, &vol_set);
 
             if (touchKeypad.available()) {
                 touchKeypadEvent e = touchKeypad.read();
@@ -1324,9 +1337,14 @@ void tracker_menu() {
                     } else {
                         pt_tmp.octave = octv_set;
                         pt_tmp.instrument = inst_sel_pos;
+                        if (vol_set != NO_VOL) {
+                            pt_tmp.volume = vol_set;
+                        }
                     }
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
-                    player.set_row(player.get_row());
+                    if (!player.get_play_status()) {
+                        player.set_row(player.get_row() + 1);
+                    }
                 }
             }
         }
@@ -1530,6 +1548,7 @@ void channel_menu() {
 
         uint8_t note_set = 0;
         uint8_t octv_set = 0;
+        uint8_t vol_set = NO_VOL;
 
         if (edit_mode) {
             if (x_pos == 0) {
@@ -1538,7 +1557,7 @@ void channel_menu() {
                     update_touchpad_note(&note_set, &octv_set, e);
                 }
                 if (USB_MIDI.available()) {
-                    update_midi_note(&note_set, &octv_set);
+                    update_midi_note(&note_set, &octv_set, &vol_set);
                 }
                 if (note_set) {
                     printf("INPUT_NOTE_SET: %d\n", note_set);
@@ -1549,8 +1568,14 @@ void channel_menu() {
                     } else {
                         pt_tmp.octave = octv_set;
                         pt_tmp.instrument = inst_sel_pos;
+                        if (vol_set != NO_VOL) {
+                            pt_tmp.volume = vol_set;
+                        }
                     }
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
+                    if (!player.get_play_status()) {
+                        player.set_row(player.get_row() + 1);
+                    }
                 }
             } else if (touchKeypad.available()) {
                 touchKeypadEvent e = touchKeypad.read();
@@ -1579,7 +1604,7 @@ void channel_menu() {
                 update_touchpad_note(&note_set, &octv_set, e);
             }
             while (USB_MIDI.available()) {
-                update_midi_note(&note_set, &octv_set);
+                update_midi_note(&note_set, &octv_set, &vol_set);
             }
         }
 
@@ -1833,7 +1858,7 @@ void frames_menu() {
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2105,7 +2130,7 @@ void sequence_editor(instrument_t *inst) {
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2258,7 +2283,7 @@ void instrument_menu() {
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2365,7 +2390,7 @@ void osc_menu() {
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(4);
@@ -2474,7 +2499,7 @@ void song_info_menu() {
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(16);
@@ -2578,7 +2603,7 @@ void visual_menu() {
             update_touchpad_note(NULL, NULL, e);
         }
         while (USB_MIDI.available()) {
-            update_midi_note(NULL, NULL);
+            update_midi_note(NULL, NULL, NULL);
         }
 
         vTaskDelay(4);

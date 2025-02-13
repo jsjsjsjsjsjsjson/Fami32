@@ -45,6 +45,18 @@ void EASY_USB_MIDI::clear() {
     xQueueReset(_midiQueue);
 }
 
+void EASY_USB_MIDI::endAllNote(uint8_t channel) {
+    midi_event_packed_t e = {0xB, (midi_code_index_number_t)0, channel, (midi_code_index_number_t)0xB, 123, 0x00};
+    MIDI.writePacket((midiEventPacket_t*)&e);
+    // printf("MIDI OUT: %X%X %X%X %02X %02X\n", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
+}
+
+void EASY_USB_MIDI::cutAllNote(uint8_t channel) {
+    midi_event_packed_t e = {0xB, (midi_code_index_number_t)0, channel, (midi_code_index_number_t)0xB, 123, 0x00};
+    MIDI.writePacket((midiEventPacket_t*)&e);
+    // printf("MIDI OUT: %X%X %X%X %02X %02X\n", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
+}
+
 void EASY_USB_MIDI::onMidiEvent(void (*callback)(midi_event_packed_t)) {
     _midiCallback = callback;
 }

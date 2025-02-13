@@ -19,6 +19,8 @@ typedef struct __attribute__((packed)) {
 
 class EASY_USB_MIDI {
 public:
+    USBMIDI MIDI;
+
     EASY_USB_MIDI();
     ~EASY_USB_MIDI();
 
@@ -27,10 +29,11 @@ public:
     int available();              // 检查是否有可用的 MIDI 事件
     midi_event_packed_t read();   // 读取一个 MIDI 事件
     void clear();                 // 清空队列中的 MIDI 事件
+    void endAllNote(uint8_t channel);
+    void cutAllNote(uint8_t channel);
     void onMidiEvent(void (*callback)(midi_event_packed_t)); // 回调函数
 
 private:
-    USBMIDI MIDI;
     QueueHandle_t _midiQueue;
     void (*_midiCallback)(midi_event_packed_t);
 };

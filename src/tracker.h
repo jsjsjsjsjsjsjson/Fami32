@@ -14,8 +14,12 @@
 #include "chipbox_pin.h"
 
 #include "basic_dsp.h"
+#include <easy_usb_midi.h>
 
 extern bool _debug_print;
+extern bool _midi_output;
+
+extern EASY_USB_MIDI USB_MIDI;
 
 #define VOL_SEQU 0
 #define ARP_SEQU 1
@@ -180,9 +184,6 @@ private:
 
     uint8_t last_note = 255;
 
-    uint8_t base_note;
-    uint8_t rely_note;
-
     uint8_t noise_rate = 0;
     uint8_t noise_rate_rel = 0;
 
@@ -253,6 +254,8 @@ private:
     HighPassFilter hpf;
 
 public:
+    uint8_t base_note;
+    uint8_t rely_note;
 
     void clear_all_fx_flag() {
         chl_vol = 15;
@@ -1103,15 +1106,30 @@ public:
         if (item.note != NO_NOTE) {
             if (item.note == NOTE_END) {
                 channel[c].note_end();
+                if (_midi_output && !mute[c]) {
+                    USB_MIDI.MIDI.noteOff(channel[c].base_note, 0, c);
+                }
             } else if (item.note == NOTE_CUT) {
                 channel[c].note_cut();
+                if (_midi_output && !mute[c]) {
+                    USB_MIDI.MIDI.noteOff(channel[c].base_note, 0, c);
+                }
             } else {
+                if (_midi_output && !mute[c]) {
+                    USB_MIDI.MIDI.noteOff(channel[c].base_note, 0, c);
+                }
                 channel[c].set_note(item2note(item.note, item.octave));
                 channel[c].note_start();
+                if (_midi_output && !mute[c]) {
+                    USB_MIDI.MIDI.noteOn(channel[c].base_note, (item.volume == NO_VOL ? channel[c].get_vol() : item.volume) << 3, c);
+                }
             }
         }
         if (item.volume != NO_VOL) {
             channel[c].set_vol(item.volume);
+            if (_midi_output && !mute[c]) {
+                USB_MIDI.MIDI.controlChange(7, item.volume << 3, c);
+            }
             // DBG_PRINTF("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
         }
         process_efx_post(item.fxdata, c);
