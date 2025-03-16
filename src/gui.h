@@ -1074,7 +1074,7 @@ void over_sample_set() {
 
 void midi_out_set() {
     static const char *menu_str[2] = {"OFF", "ON"};
-    int r = menu("MIDI OUT", menu_str, 2, NULL, 68, 29, 0, 0, _midi_output);
+    int r = menu("MIDI OUT", menu_str, 2, NULL, 60, 29, 0, 0, _midi_output);
     if (r != -1) {
         _midi_output = r;
     }
