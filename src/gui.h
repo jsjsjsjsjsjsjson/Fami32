@@ -61,6 +61,8 @@ extern TaskHandle_t SOUND_TASK_HD;
 extern bool sound_task_stat;
 extern i2s_chan_handle_t tx_handle;
 
+extern bool _midi_output;
+
 extern EASY_USB_MIDI USB_MIDI;
 
 static uint8_t main_menu_pos = 0;
@@ -1070,10 +1072,18 @@ void over_sample_set() {
     }
 }
 
+void midi_out_set() {
+    static const char *menu_str[2] = {"OFF", "ON"};
+    int r = menu("MIDI OUT", menu_str, 2, NULL, 68, 29, 0, 0, _midi_output);
+    if (r != -1) {
+        _midi_output = r;
+    }
+}
+
 void settings_page() {
-    static const char *menu_str[8] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "VOLUME", "RESET CONFIG"};
-    void (*menuFunc[8])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, over_sample_set, vol_set_page, erase_config_set};
-    fullScreenMenu("SETTINGS", menu_str, 8, menuFunc, 0);
+    static const char *menu_str[9] = {"SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", "FINETUNE", "OVER SAMPLE", "VOLUME", "MIDI OUT", "RESET CONFIG"};
+    void (*menuFunc[9])(void) = {samp_rate_set, eng_speed_set, low_pass_set, high_pass_set, finetune_set, over_sample_set, vol_set_page, midi_out_set, erase_config_set};
+    fullScreenMenu("SETTINGS", menu_str, 9, menuFunc, 0);
     display.setFont(&rismol57);
     drawPopupBox("SAVE CONFIG...", 0, 0, 0, 0);
     display.display();
