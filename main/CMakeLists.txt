@@ -1,0 +1,4 @@
+idf_component_register(SRCS "main.cpp" "dpcm.c" "ftm_file.cpp" "ls.c" "micro_config.c"
+                    PRIV_REQUIRES spi_flash
+                    INCLUDE_DIRS "" "include"
+                    REQUIRES Adafruit_SSD1306 Adafruit_Keypad Adafruit_MPR121 arduino-esp32-lite USBMIDI)
