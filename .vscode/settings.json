@@ -58,6 +58,7 @@
         "thread": "cpp",
         "new": "cpp",
         "*.tcc": "cpp",
-        "numbers": "cpp"
+        "numbers": "cpp",
+        "startup_internal.h": "c"
     }
 }

@@ -2479,8 +2479,8 @@ void visual_menu() {
         display.println(ftm.nf_block.author);
         display.println(ftm.nf_block.copyright);
 
-        display.setCursor(102, 59);
-        display.printf("(%02X/%02lX)", player.get_frame(), ftm.fr_block.frame_num - 1);
+        display.setCursor(90, 59);
+        display.printf("(%02X/%02lX>%02X)", player.get_row(), ftm.fr_block.pat_length, player.get_frame());
 
         display.display();
 

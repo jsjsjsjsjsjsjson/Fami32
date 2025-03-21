@@ -12,7 +12,6 @@ set(CORE_SRCS
   cores/esp32/cbuf.cpp
   cores/esp32/ColorFormat.c
   cores/esp32/esp32-hal-adc.c
-  cores/esp32/esp32-hal-bt.c
   cores/esp32/esp32-hal-cpu.c
   cores/esp32/esp32-hal-dac.c
   cores/esp32/esp32-hal-gpio.c

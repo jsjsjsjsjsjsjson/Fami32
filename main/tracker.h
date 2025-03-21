@@ -643,7 +643,7 @@ public:
     void note_start() {
         if (mode == DPCM_SAMPLE) {
             sample_fpos = 0;
-            sample_pos = sample_start * 256;
+            sample_pos = sample_start * 512;
             sample_status = true;
         } else {
             inst_proc.start();
@@ -655,7 +655,7 @@ public:
 
     void set_dpcm_offset(uint8_t n) {
         sample_start = n;
-        sample_pos = n * 256;
+        sample_pos = n * 512;
     }
 
     void set_dpcm_var(uint8_t n) {

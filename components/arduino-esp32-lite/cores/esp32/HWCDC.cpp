@@ -60,7 +60,7 @@ static esp_err_t
   arduino_hw_cdc_event_handler_register_with(esp_event_base_t event_base, int32_t event_id, esp_event_handler_t event_handler, void *event_handler_arg) {
   if (!arduino_hw_cdc_event_loop_handle) {
     esp_event_loop_args_t event_task_args = {
-      .queue_size = 5, .task_name = "arduino_hw_cdc_events", .task_priority = 5, .task_stack_size = 2048, .task_core_id = tskNO_AFFINITY
+      .queue_size = 5, .task_name = "arduino_hw_cdc_events", .task_priority = 5, .task_stack_size = 2048, .task_core_id = (BaseType_t)tskNO_AFFINITY
     };
     if (esp_event_loop_create(&event_task_args, &arduino_hw_cdc_event_loop_handle) != ESP_OK) {
       log_e("esp_event_loop_create failed");

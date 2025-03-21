@@ -7,7 +7,7 @@ static const char *TAG = "USBMIDI";
 const char *USBMIDI::s_str_desc[5] = {
     (char[]){0x09, 0x04},  // Supported language
     "nyakoLab",            // Manufacturer
-    "nyakoLab Fami32",     // Product
+    "Fami32",              // Product
     "000721",              // Serial number
     "Fami32 MIDI I/O",     // MIDI interface
 };
