@@ -138,30 +138,30 @@ const float note2period_table[128] = {
 #define FCPU_HZ 1789773.0f
 int BASE_FREQ_HZ = 440;
 
-float note2period(uint8_t midi_note) {
+inline float note2period(uint8_t midi_note) {
     // return note2period_table[midi_note & 127];
     return (FCPU_HZ / (16.0f * (BASE_FREQ_HZ * exp2f((midi_note - 69) / 12.0f)))) - 1.0f;
 }
 
-float period2note(float period) {
+inline float period2note(float period) {
     float ratio = FCPU_HZ / (16.0f * BASE_FREQ_HZ * (period + 1.0f));
     float midi_note = 69.0f + 12.0f * log2f(ratio);
     return midi_note + 0.5f;
 }
 
-uint8_t note2noise(uint8_t midi_note) {
+inline uint8_t note2noise(uint8_t midi_note) {
     return (midi_note - 8) & 15;
 }
 
-float period2freq(float period) {
+inline float period2freq(float period) {
     return FCPU_HZ / (16.0f * (period + 1.0f));
 }
 
-float freq2period(float freq) {
+inline float freq2period(float freq) {
     return (FCPU_HZ / (16.0f * freq)) - 1.0f;
 }
 
-uint8_t item2note(uint8_t note, uint8_t octv) {
+inline uint8_t item2note(uint8_t note, uint8_t octv) {
     return (note - 1) + ((octv + 2) * 12);
 }
 

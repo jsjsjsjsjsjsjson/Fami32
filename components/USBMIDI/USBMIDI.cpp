@@ -50,7 +50,7 @@ bool USBMIDI::begin() {
     }
 
     // Create a task for reading MIDI data
-    xTaskCreate(midiReadTask, "midi_read_task", 4096, this, 5, &readTaskHandle);
+    xTaskCreatePinnedToCore(midiReadTask, "midi_read_task", 4096, this, 6, &readTaskHandle, 0);
 
     initialized = true;
     ESP_LOGI(TAG, "USBMIDI initialized");

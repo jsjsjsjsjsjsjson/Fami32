@@ -14,4 +14,5 @@ dependencies:
   #   # `public` flag doesn't have an effect dependencies of the `main` component.
   #   # All dependencies of `main` are public by default.
   #   public: true
-  espressif/esp_tinyusb: "^1.1"
+  espressif/esp_tinyusb: ^1.1
+  joltwallet/littlefs: ==1.19.1

@@ -2,8 +2,10 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_Keypad.h>
 #include <MPR121_Keypad.h>
-// #include <esp_littlefs.h>
-#include <esp_vfs_fat.h>
+
+#include <esp_spi_flash.h>
+#include <esp_littlefs.h>
+
 #include <driver/i2s_std.h>
 #include "fami32_pin.h"
 #include "ftm_file.h"
@@ -95,9 +97,9 @@ const uint8_t bayerMatrix[4][4] = {
 };
 
 void midi_callback(midiEventPacket_t packet) {
-    midiEventData_t e;
+    static midiEventData_t e;
     memcpy(&e, &packet, 4);
-    ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
+    // ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
     set_channel_sel_pos(e.ch);
     if (e.event == MIDI_CIN_NOTE_ON) {
         player.channel[channel_sel_pos].set_inst(inst_sel_pos);
@@ -176,13 +178,14 @@ void app_main_cpp() {
         display.display();
     }
 
-    esp_vfs_fat_mount_config_t fat_conf = {
+    esp_vfs_littlefs_conf_t conf = {
+        .base_path = "/flash",
+        .partition_label = "flash",
         .format_if_mount_failed = true,
-        .max_files = 1
+        .dont_mount = false,
     };
-    wl_handle_t wl_handle;
-    esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "spiffs", &fat_conf, &wl_handle);
-    printf("\nFATFS mount %d: %s\n", ret, esp_err_to_name(ret));
+    esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    printf("\nLittleFS mount %d: %s\n", ret, esp_err_to_name(ret));
 
     if (read_config(config_path) != CONFIG_SUCCESS) {
         display.setCursor(0, 59);
@@ -252,8 +255,8 @@ void app_main_cpp() {
     }
     keypad.read();
 
-    xTaskCreate(sound_task, "SOUND TASK", 8192, NULL, 8, &SOUND_TASK_HD);
-    xTaskCreate(keypad_task, "KEYPAD", 2048, NULL, 3, NULL);
+    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 8, &SOUND_TASK_HD, 0);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 2048, NULL, 3, NULL, 1);
 
     MIDI.setCallback(midi_callback);
 
@@ -280,7 +283,7 @@ void app_main_cpp() {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreate(gui_task, "GUI", 20480, NULL, 6, &GUI_TASK);
+    xTaskCreatePinnedToCore(gui_task, "GUI", 20480, NULL, 6, &GUI_TASK, 1);
 }
 
 extern "C" void app_main(void) { app_main_cpp(); }

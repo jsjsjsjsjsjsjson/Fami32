@@ -166,10 +166,8 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
                 if (e.bit.KEY == KEY_OCTU) {
                     charOfst += 16;
-                    printf("CHAR: %d\n", charOfst);
                 } else if (e.bit.KEY == KEY_OCTD) {
                     charOfst -= 16;
-                    printf("CHAR: %d\n", charOfst);
                 } else if (e.bit.KEY == KEY_S) {
                     if (charPos > 0) {
                         charPos--;
@@ -378,13 +376,14 @@ void drawPopupBox(const char* message) {
 }
 
 const char* file_sel(const char *basepath) {
+    display.setFont(&rismol35);
     struct dirent **namelist = NULL;
     int n = 0;
 
     static char current_path[PATH_MAX];
     strncpy(current_path, basepath, PATH_MAX - 1);
     current_path[PATH_MAX - 1] = '\0';
-
+    static char fullpath[1280];
     static char selected_file[PATH_MAX];
 
     int selected = 0;
@@ -392,7 +391,19 @@ const char* file_sel(const char *basepath) {
     const int display_lines = 8;
     bool directory_changed = true;
 
-    while (1) {
+    static struct {
+        char name[256];
+        bool is_dir;
+    } dir_cache[256];
+    int dir_cache_size = 0;
+
+    display.setTextColor(0);
+    display.fillRect(0, 0, 128, 6, 1);
+    display.setCursor(0, 0);
+    display.print("FILE SELECTOR");
+    display.setTextColor(1);
+
+    for(;;) {
         if (directory_changed) {
             if (namelist != NULL) {
                 for (int i = 0; i < n; i++) {
@@ -405,7 +416,6 @@ const char* file_sel(const char *basepath) {
 
             DIR *dir = opendir(current_path);
             if (dir == NULL) {
-
                 display.clearDisplay();
                 display.setTextSize(1);
                 display.setTextColor(SSD1306_WHITE);
@@ -432,6 +442,15 @@ const char* file_sel(const char *basepath) {
                 return NULL;
             }
 
+            dir_cache_size = 0;
+            for (int i = 0; i < n && dir_cache_size < 256; i++) {
+                snprintf(dir_cache[dir_cache_size].name, sizeof(dir_cache[dir_cache_size].name), "%s", namelist[i]->d_name);
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", current_path, namelist[i]->d_name);
+                struct stat st;
+                dir_cache[dir_cache_size].is_dir = (stat(fullpath, &st) == 0 && S_ISDIR(st.st_mode));
+                dir_cache_size++;
+            }
+
             selected = 0;
             top = 0;
             directory_changed = false;
@@ -443,16 +462,12 @@ const char* file_sel(const char *basepath) {
             top = selected - display_lines + 1;
         }
 
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0);
-        display.print("SELECT A FILE IN:");
+        display.fillRect(0, 6, 128, 121, 0);
         display.setCursor(0, 7);
-        display.print(current_path);
+        display.printf(":%s", current_path);
         display.drawFastHLine(0, 13, 128, SSD1306_WHITE);
 
-        for (int i = top; i < top + display_lines && i < n; i++) {
+        for (int i = top; i < top + display_lines && i < dir_cache_size; i++) {
             int displayIndex = i - top;
             if (i == selected) {
                 display.fillRect(0, 15 + displayIndex * 6, 128, 7, SSD1306_WHITE);
@@ -461,19 +476,14 @@ const char* file_sel(const char *basepath) {
                 display.setTextColor(SSD1306_WHITE);
             }
 
-            char *name = namelist[i]->d_name;
-
-            char fullpath[PATH_MAX*2];
-            snprintf(fullpath, PATH_MAX*2, "%s/%s", current_path, name);
-            struct stat st;
-            if (stat(fullpath, &st) == 0 && S_ISDIR(st.st_mode)) {
-                char display_name[512];
-                snprintf(display_name, sizeof(display_name), "%s/", name);
+            if (dir_cache[i].is_dir) {
+                static char display_name[512];
+                snprintf(display_name, sizeof(display_name), "%s/", dir_cache[i].name);
                 display.setCursor(0, 16 + displayIndex * 6);
                 display.print(display_name);
             } else {
                 display.setCursor(0, 16 + displayIndex * 6);
-                display.print(name);
+                display.print(dir_cache[i].name);
             }
 
             if (i == selected) {
@@ -491,12 +501,12 @@ const char* file_sel(const char *basepath) {
                         if (selected > 0) {
                             selected--;
                         } else {
-                            selected = n - 1;
+                            selected = dir_cache_size - 1;
                         }
                         break;
 
                     case KEY_DOWN:
-                        if (selected < n - 1) {
+                        if (selected < dir_cache_size - 1) {
                             selected++;
                         } else {
                             selected = 0;
@@ -504,16 +514,15 @@ const char* file_sel(const char *basepath) {
                         break;
 
                     case KEY_OK:
-                        if (n <= 0) {
+                        if (dir_cache_size <= 0) {
                             break;
                         } else {
-                            char *selected_name = namelist[selected]->d_name;
+                            char *selected_name = dir_cache[selected].name;
 
-                            char selected_path[PATH_MAX];
-                            snprintf(selected_path, PATH_MAX, "%s/%s", current_path, selected_name);
+                            static char selected_path[PATH_MAX];
+                            snprintf(selected_path, PATH_MAX - 1, "%s/%s", current_path, selected_name);
 
-                            struct stat st;
-                            if (stat(selected_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                            if (dir_cache[selected].is_dir) {
                                 strncpy(current_path, selected_path, PATH_MAX - 1);
                                 current_path[PATH_MAX - 1] = '\0';
                                 directory_changed = true;
@@ -553,11 +562,11 @@ const char* file_sel(const char *basepath) {
             }
         }
 
-        if (selected >= n) {
-            selected = n - 1;
+        if (selected >= dir_cache_size) {
+            selected = dir_cache_size - 1;
         }
 
-        vTaskDelay(2);
+        vTaskDelay(1);
     }
 }
 
@@ -821,6 +830,7 @@ void menu_navi() {
 }
 
 void open_file_page() {
+    drawPopupBox("LOADING...");
     pause_sound();
     const char* file = file_sel("/flash");
     drawPopupBox("READING...");
@@ -907,7 +917,7 @@ void menu_file() {
             strcpy(current_file, "Untitled");
             displayKeyboard("SAVE...", current_file, 255);
             printf("CUR: %s\n", current_file);
-            sprintf(target_file, "/flash/%s.ftm", current_file);
+            snprintf(target_file, 254, "/flash/%s.ftm", current_file);
             printf("SAVE AS TO: %s\n", target_file);
             drawPopupBox("WRITING...");
             display.display();
@@ -924,7 +934,7 @@ void menu_file() {
         current_file[strlen(current_file) - 4] = '\0';
         displayKeyboard("SAVE AS...", current_file, 255);
         printf("CUR: %s\n", current_file);
-        sprintf(target_file, "/flash/%s.ftm", current_file);
+        snprintf(target_file, 254, "/flash/%s.ftm", current_file);
         printf("SAVE AS TO: %s\n", target_file);
         drawPopupBox("WRITING...");
         display.display();
@@ -1039,7 +1049,7 @@ void settings_page() {
     display.display();
     write_config(config_path);
     if (setting_change) {
-        drawPopupBox("Requires reboot\nto apply changes.");
+        drawPopupBox("Requires reboot to apply changes.");
         display.display();
         vTaskDelay(1024);
         esp_restart();
@@ -2397,24 +2407,26 @@ void song_info_menu() {
             keypadEvent e = keypad.read();
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
                 if (e.bit.KEY == KEY_OK) {
-                    if (page) {
-                        int last_row = ftm.fr_block.pat_length;
-                        num_set_menu_int(setting_menu_str[select], min[select], max[select], 1, song_setting[select], 0, 0, 120, 36);
-                        if (ftm.fr_block.pat_length != last_row) {
-                            pause_sound();
-                            player.set_row(0);
-                            display.setFont(&rismol35);
-                            drawPopupBox("RESIZE PATTERN...");
-                            display.display();
-                            for (int c = 0; c < ftm.pr_block.channel; c++) {
-                                for (int i = 0; i < ftm.unpack_pt[c].size(); i++) {
-                                    ftm.unpack_pt[c][i].resize(ftm.fr_block.pat_length);
+                    if (select != -1) {
+                        if (page) {
+                            int last_row = ftm.fr_block.pat_length;
+                            num_set_menu_int(setting_menu_str[select], min[select], max[select], 1, song_setting[select], 0, 0, 120, 36);
+                            if (ftm.fr_block.pat_length != last_row) {
+                                pause_sound();
+                                player.set_row(0);
+                                display.setFont(&rismol35);
+                                drawPopupBox("RESIZE PATTERN...");
+                                display.display();
+                                for (int c = 0; c < ftm.pr_block.channel; c++) {
+                                    for (int i = 0; i < ftm.unpack_pt[c].size(); i++) {
+                                        ftm.unpack_pt[c][i].resize(ftm.fr_block.pat_length);
+                                    }
                                 }
                             }
+                            player.ref_speed_and_tempo();
+                        } else {
+                            displayKeyboard(info_menu_str[select], song_info[select], 31);
                         }
-                        player.ref_speed_and_tempo();
-                    } else {
-                        displayKeyboard(info_menu_str[select], song_info[select], 31);
                     }
                 } else if (e.bit.KEY == KEY_NAVI) {
                     display.setFont(&rismol35);
