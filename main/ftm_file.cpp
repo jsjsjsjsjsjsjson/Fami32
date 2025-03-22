@@ -173,7 +173,7 @@ void FTM_FILE::write_file_header() {
 
 void FTM_FILE::write_param_block() {
     pr_block.size = 29;
-    fwrite(&pr_block, 1, sizeof(pr_block), ftm_file);
+    fwrite(&pr_block, sizeof(pr_block), 1, ftm_file);
 }
 
 int FTM_FILE::read_param_block() {
@@ -210,7 +210,7 @@ void FTM_FILE::read_info_block() {
 
 void FTM_FILE::write_info_block() {
     nf_block.size = 96;
-    fwrite(&nf_block, 1, sizeof(nf_block), ftm_file);
+    fwrite(&nf_block, sizeof(nf_block), 1, ftm_file);
 }
 
 int FTM_FILE::read_header_block() {
@@ -267,7 +267,7 @@ void FTM_FILE::write_instrument_block() {
     }
     printf("WRITE SIZE=%d\n", tol_size);
     inst_block.size = tol_size;
-    fwrite(&inst_block, 1, sizeof(inst_block), ftm_file);
+    fwrite(&inst_block, sizeof(inst_block), 1, ftm_file);
 }
 
 void FTM_FILE::read_instrument_data() {
@@ -326,7 +326,7 @@ void FTM_FILE::read_sequences_block() {
 void FTM_FILE::write_sequences() {
     size_t block_start_addr = ftell(ftm_file);
     int sequ_num = 0;
-    fwrite(&seq_block, 1, sizeof(seq_block), ftm_file);
+    fwrite(&seq_block, sizeof(seq_block), 1, ftm_file);
 
     size_t tol_size = 4;
     for (int type = 0; type < 5; type++) {
@@ -354,7 +354,7 @@ void FTM_FILE::write_sequences() {
     seq_block.size = tol_size;
     seq_block.sequ_num = sequ_num;
     fseek(ftm_file, block_start_addr, SEEK_SET);
-    fwrite(&seq_block, 1, sizeof(seq_block), ftm_file);
+    fwrite(&seq_block, sizeof(seq_block), 1, ftm_file);
     fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 
@@ -473,7 +473,7 @@ void FTM_FILE::read_frame_data() {
 void FTM_FILE::write_frame() {
     fr_block.size = (fr_block.frame_num * pr_block.channel) + 16;
     printf("WRITE FRAME: %ld\n", fr_block.frame_num);
-    fwrite(&fr_block, 1, sizeof(FRAME_BLOCK), ftm_file);
+    fwrite(&fr_block, sizeof(FRAME_BLOCK), 1, ftm_file);
 
     for (int f = 0; f < fr_block.frame_num; f++) {
         fwrite(frames[f].data(), 1, pr_block.channel, ftm_file);
@@ -535,7 +535,7 @@ void FTM_FILE::read_pattern_data() {
 
 void FTM_FILE::write_pattern() {
     size_t block_start_addr = ftell(ftm_file);
-    fwrite(&pt_block, 1, sizeof(PATTERN_BLOCK), ftm_file);
+    fwrite(&pt_block, sizeof(PATTERN_BLOCK), 1, ftm_file);
     
     patterns.clear();
     patterns.resize(pr_block.channel);
@@ -581,7 +581,7 @@ void FTM_FILE::write_pattern() {
             fwrite(&patterns[c][i], 4, 4, ftm_file);
             tol_size += 4 * 4;
             for (int item = 0; item < patterns[c][i].item.size(); item++) {
-                fwrite(&patterns[c][i].item[item], 1, item_size, ftm_file);
+                fwrite(&patterns[c][i].item[item], item_size, 1, ftm_file);
                 tol_size += item_size;
             }
         }
@@ -592,7 +592,7 @@ void FTM_FILE::write_pattern() {
     pt_block.size = tol_size;
 
     fseek(ftm_file, block_start_addr, SEEK_SET);
-    fwrite(&pt_block, 1, sizeof(PATTERN_BLOCK), ftm_file);
+    fwrite(&pt_block, sizeof(PATTERN_BLOCK), 1, ftm_file);
     fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 
@@ -660,7 +660,7 @@ void FTM_FILE::read_dpcm_data() {
 
 void FTM_FILE::write_dpcm() {
     size_t block_start_addr = ftell(ftm_file);
-    fwrite(&dpcm_block, 1, sizeof(DPCM_SAMPLE_BLOCK), ftm_file);
+    fwrite(&dpcm_block, sizeof(DPCM_SAMPLE_BLOCK), 1, ftm_file);
     
     if (dpcm_block.sample_num == 0) {
         return;
@@ -682,7 +682,7 @@ void FTM_FILE::write_dpcm() {
     size_t block_end_addr = ftell(ftm_file);
 
     fseek(ftm_file, block_start_addr, SEEK_SET);
-    fwrite(&dpcm_block, 1, sizeof(DPCM_SAMPLE_BLOCK), ftm_file);
+    fwrite(&dpcm_block, sizeof(DPCM_SAMPLE_BLOCK), 1, ftm_file);
     fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 

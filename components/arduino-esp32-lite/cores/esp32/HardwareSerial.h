@@ -51,7 +51,6 @@
 #include "esp32-hal.h"
 #include "soc/soc_caps.h"
 #include "HWCDC.h"
-#include "USBCDC.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

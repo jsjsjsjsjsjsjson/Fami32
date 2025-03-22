@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "USB.h"
 #if SOC_USB_SERIAL_JTAG_SUPPORTED
 
 #include "esp32-hal.h"

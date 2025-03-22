@@ -2,6 +2,7 @@
 #define GUI_H
 
 #include <stdio.h>
+#include <unistd.h>
 #include <vector>
 #include <esp_log.h>
 #include <Adafruit_SSD1306.h>
@@ -327,19 +328,6 @@ void drawChessboardWithNegativeSize(int16_t x, int16_t y, int16_t w, int16_t h) 
 void pause_sound() {
     player.stop_play();
     size_t writed;
-    // int timer = 0;
-    // while (sound_task_stat) {
-    //     timer++;
-    //     if (timer > 64) {
-    //         break;
-    //     }
-    //     vTaskDelay(1);
-    // }
-    if (_midi_output) {
-        for (int i = 0; i < 5; i++ ) {
-            MIDI.noteOff(0, 0, i);
-        }
-    }
     memset(player.get_buf(), 0, player.get_buf_size_byte());
     i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
 }
@@ -375,6 +363,103 @@ void drawPopupBox(const char* message) {
     display.display();
 }
 
+int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), uint16_t width, uint16_t height, uint16_t x = 0, uint16_t y = 0, int8_t initPos = 0, int *menuVar = NULL) {
+    if (x == 0) x = (128 - width) / 2;
+    if (y == 0) y = (64 - height) / 2;
+
+    display.setTextColor(1);
+
+    int8_t menuPos = initPos;
+    int8_t pageStart = 0;
+    const uint8_t itemsPerPage = (height - 10) / 8;
+
+    display.drawRect(x - 1, y - 1, width + 2, height + 2, 0);
+
+    for (;;) {
+        display.fillRect(x, y, width, height, 0);
+        display.drawRect(x, y, width, height, 1);
+
+        display.fillRect(x + 1, y + 1, width - 2, 8, 1);
+        display.setTextColor(0);
+        display.setCursor(x + 3, y + 2);
+        display.print(name);
+        display.setTextColor(1);
+
+        if (menuPos < pageStart) {
+            pageStart = menuPos;
+        } else if (menuPos >= pageStart + itemsPerPage) {
+            pageStart = menuPos - itemsPerPage + 1;
+        }
+
+        uint8_t pageEnd = (pageStart + itemsPerPage > maxMenuPos + 1) ? maxMenuPos + 1 : pageStart + itemsPerPage;
+
+        for (uint8_t i = pageStart; i < pageEnd; i++) {
+            uint8_t displayIndex = i - pageStart;
+            uint16_t itemYPos = y + 10 + (displayIndex * 8);
+
+            if (i == menuPos) {
+                display.fillRect(x, itemYPos + 1, width, 7, SSD1306_WHITE);
+                display.setTextColor(SSD1306_BLACK);
+                display.setCursor(x + 4, itemYPos + 2);
+            } else {
+                display.setTextColor(SSD1306_WHITE);
+                display.setCursor(x + 3, itemYPos + 2);
+            }
+
+            if (i >= maxMenuPos) {
+                display.print("CANCEL");
+            } else {
+                display.print(menuStr[i]);
+            }
+        }
+
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_OK) {
+                    if (menuPos >= maxMenuPos) {
+                        return -1;
+                    }
+                    if (menuFunc != nullptr && menuFunc[menuPos] != nullptr) {
+                        menuFunc[menuPos]();
+                    } else {
+                        return menuPos;
+                    }
+                } else if (e.bit.KEY == KEY_BACK) {
+                    return -1;
+                } else if (e.bit.KEY == KEY_UP) {
+                    menuPos--;
+                    if (menuPos < 0) {
+                        menuPos = maxMenuPos;
+                        pageStart = (maxMenuPos / itemsPerPage) * itemsPerPage;
+                    }
+                    if (menuVar != NULL) {
+                        *menuVar = menuPos;
+                    }
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    menuPos++;
+                    if (menuPos > maxMenuPos) {
+                        menuPos = 0;
+                        pageStart = 0;
+                    }
+                    if (menuVar != NULL) {
+                        *menuVar = menuPos;
+                    }
+                }
+            }
+        }
+
+        if (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            update_touchpad_note(NULL, NULL, e);
+        }
+
+        vTaskDelay(4);
+    }
+}
+
 const char* file_sel(const char *basepath) {
     display.setFont(&rismol35);
     struct dirent **namelist = NULL;
@@ -400,7 +485,7 @@ const char* file_sel(const char *basepath) {
     display.setTextColor(0);
     display.fillRect(0, 0, 128, 6, 1);
     display.setCursor(0, 0);
-    display.print("FILE SELECTOR");
+    display.print("FILE SELECTOR/MANAGER");
     display.setTextColor(1);
 
     for(;;) {
@@ -467,28 +552,33 @@ const char* file_sel(const char *basepath) {
         display.printf(":%s", current_path);
         display.drawFastHLine(0, 13, 128, SSD1306_WHITE);
 
-        for (int i = top; i < top + display_lines && i < dir_cache_size; i++) {
-            int displayIndex = i - top;
-            if (i == selected) {
-                display.fillRect(0, 15 + displayIndex * 6, 128, 7, SSD1306_WHITE);
-                display.setTextColor(SSD1306_BLACK);
-            } else {
-                display.setTextColor(SSD1306_WHITE);
-            }
+        if (dir_cache_size) {
+            for (int i = top; i < top + display_lines && i < dir_cache_size; i++) {
+                int displayIndex = i - top;
+                if (i == selected) {
+                    display.fillRect(0, 15 + displayIndex * 6, 128, 7, SSD1306_WHITE);
+                    display.setTextColor(SSD1306_BLACK);
+                } else {
+                    display.setTextColor(SSD1306_WHITE);
+                }
 
-            if (dir_cache[i].is_dir) {
-                static char display_name[512];
-                snprintf(display_name, sizeof(display_name), "%s/", dir_cache[i].name);
-                display.setCursor(0, 16 + displayIndex * 6);
-                display.print(display_name);
-            } else {
-                display.setCursor(0, 16 + displayIndex * 6);
-                display.print(dir_cache[i].name);
-            }
+                if (dir_cache[i].is_dir) {
+                    static char display_name[512];
+                    snprintf(display_name, sizeof(display_name), "%s/", dir_cache[i].name);
+                    display.setCursor(0, 16 + displayIndex * 6);
+                    display.print(display_name);
+                } else {
+                    display.setCursor(0, 16 + displayIndex * 6);
+                    display.print(dir_cache[i].name);
+                }
 
-            if (i == selected) {
-                display.setTextColor(SSD1306_WHITE);
+                if (i == selected) {
+                    display.setTextColor(SSD1306_WHITE);
+                }
             }
+        } else {
+            display.setCursor(22, 36);
+            display.print("There's nothing here!");
         }
 
         display.display();
@@ -513,6 +603,37 @@ const char* file_sel(const char *basepath) {
                         }
                         break;
 
+                    case KEY_MENU:
+                        {
+                            static const char *menuStr[2] = {"RENAME", "DELETE"};
+                            int ret = menu("FILE OPTION", menuStr, 2, NULL, 54, 29);
+
+                            drawPopupBox("PLEASE WAIT...");
+
+                            char *selected_name = dir_cache[selected].name;
+
+                            static char selected_path[PATH_MAX];
+                            snprintf(selected_path, PATH_MAX - 1, "%s/%s", current_path, selected_name);
+
+                            strncpy(selected_file, selected_path, PATH_MAX - 1);
+                            selected_file[PATH_MAX - 1] = '\0';
+
+                            if (ret == 0) {
+                                char new_name[256];
+                                snprintf(new_name, sizeof(new_name), "%s", dir_cache[selected].name);
+                                displayKeyboard("Rename", new_name, 255);
+                                char new_path[PATH_MAX];
+                                snprintf(new_path, PATH_MAX - 1, "%s/%s", current_path, new_name);
+                                rename(selected_file, new_path);
+                                directory_changed = true;
+                            } else if (ret == 1) {
+                                drawPopupBox("PLEASE WAIT...");
+                                remove(selected_file);
+                            }
+                            directory_changed = true;
+                        }
+                        break;
+                    
                     case KEY_OK:
                         if (dir_cache_size <= 0) {
                             break;
@@ -544,12 +665,17 @@ const char* file_sel(const char *basepath) {
 
                     case KEY_BACK:
                         {
+                            if (strcmp(current_path, basepath) == 0) {
+                                return NULL;
+                            }
+
                             char *last_slash = strrchr(current_path, '/');
                             if (last_slash != NULL && last_slash != current_path) {
                                 *last_slash = '\0';
                             } else {
                                 strcpy(current_path, "/");
                             }
+
                             selected = 0;
                             top = 0;
                             directory_changed = true;
@@ -567,103 +693,6 @@ const char* file_sel(const char *basepath) {
         }
 
         vTaskDelay(1);
-    }
-}
-
-int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*menuFunc[])(void), uint16_t width, uint16_t height, uint16_t x = 0, uint16_t y = 0, int8_t initPos = 0, int *menuVar = NULL) {
-    if (x == 0) x = (128 - width) / 2;
-    if (y == 0) y = (64 - height) / 2;
-
-    display.setTextColor(1);
-
-    int8_t menuPos = initPos;
-    int8_t pageStart = 0;
-    const uint8_t itemsPerPage = (height - 10) / 8;
-
-    display.drawRect(x - 1, y - 1, width + 2, height + 2, 0);
-
-    for (;;) {
-        display.fillRect(x, y, width, height, 0);
-        display.drawRect(x, y, width, height, 1);
-
-        display.fillRect(x + 1, y + 1, width - 2, 8, 1);
-        display.setTextColor(0);
-        display.setCursor(x + 3, y + 2);
-        display.print(name);
-        display.setTextColor(1);
-
-        if (menuPos < pageStart) {
-            pageStart = menuPos;
-        } else if (menuPos >= pageStart + itemsPerPage) {
-            pageStart = menuPos - itemsPerPage + 1;
-        }
-
-        uint8_t pageEnd = (pageStart + itemsPerPage > maxMenuPos + 1) ? maxMenuPos + 1 : pageStart + itemsPerPage;
-
-        for (uint8_t i = pageStart; i < pageEnd; i++) {
-            uint8_t displayIndex = i - pageStart;
-            uint16_t itemYPos = y + 10 + (displayIndex * 8);
-
-            if (i == menuPos) {
-                display.fillRect(x, itemYPos + 1, width, 7, SSD1306_WHITE);
-                display.setTextColor(SSD1306_BLACK);
-                display.setCursor(x + 4, itemYPos + 2);
-            } else {
-                display.setTextColor(SSD1306_WHITE);
-                display.setCursor(x + 3, itemYPos + 2);
-            }
-
-            if (i >= maxMenuPos) {
-                display.print("EXIT");
-            } else {
-                display.print(menuStr[i]);
-            }
-        }
-
-        display.display();
-
-        if (keypad.available()) {
-            keypadEvent e = keypad.read();
-            if (e.bit.EVENT == KEY_JUST_PRESSED) {
-                if (e.bit.KEY == KEY_OK) {
-                    if (menuPos >= maxMenuPos) {
-                        return -1;
-                    }
-                    if (menuFunc != nullptr && menuFunc[menuPos] != nullptr) {
-                        menuFunc[menuPos]();
-                    } else {
-                        return menuPos;
-                    }
-                } else if (e.bit.KEY == KEY_BACK) {
-                    return -1;
-                } else if (e.bit.KEY == KEY_UP) {
-                    menuPos--;
-                    if (menuPos < 0) {
-                        menuPos = maxMenuPos;
-                        pageStart = (maxMenuPos / itemsPerPage) * itemsPerPage;
-                    }
-                    if (menuVar != NULL) {
-                        *menuVar = menuPos;
-                    }
-                } else if (e.bit.KEY == KEY_DOWN) {
-                    menuPos++;
-                    if (menuPos > maxMenuPos) {
-                        menuPos = 0;
-                        pageStart = 0;
-                    }
-                    if (menuVar != NULL) {
-                        *menuVar = menuPos;
-                    }
-                }
-            }
-        }
-
-        if (touchKeypad.available()) {
-            touchKeypadEvent e = touchKeypad.read();
-            update_touchpad_note(NULL, NULL, e);
-        }
-
-        vTaskDelay(4);
     }
 }
 
@@ -833,6 +862,9 @@ void open_file_page() {
     drawPopupBox("LOADING...");
     pause_sound();
     const char* file = file_sel("/flash");
+    if (file == NULL) {
+        return;
+    }
     drawPopupBox("READING...");
     int ret = ftm.open_ftm(file);
     ESP_LOGI("OPEN_FTM", "Open file %s...", file);
@@ -1833,7 +1865,7 @@ void sequence_editor(instrument_t *inst) {
 
     static const char *sequ_name[5] = {"VOLUME", "ARPEGGIO", "PITCH", "HI-PITCH", "DUTY"};
 
-    static const char *menu_str[4] = {"LENGTH", "LOOP", "RELEASE", "SEQU INDEX"};
+    static const char *menu_str[5] = {"LENGTH", "LOOP", "RELEASE", "SEQU INDEX", "QUICK GEN."};
 
     int draw_base = 30;
 
@@ -1982,7 +2014,7 @@ void sequence_editor(instrument_t *inst) {
                         sequ_type = ret;
                     }
                 } else if (e.bit.KEY == KEY_NAVI) {
-                    int ret = menu("SEQUENCE", menu_str, 4, NULL, 60, 45, 0, 0, 0);
+                    int ret = menu("SEQUENCE", menu_str, 5, NULL, 60, 45, 0, 0, 0);
                     int sequ_len;
                     int sequ_index_ref;
                     int loop_ref;

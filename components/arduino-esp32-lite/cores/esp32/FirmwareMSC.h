@@ -14,7 +14,6 @@
 
 #pragma once
 #include <stdbool.h>
-#include "USBMSC.h"
 
 #if CONFIG_TINYUSB_MSC_ENABLED
 

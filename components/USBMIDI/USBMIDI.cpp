@@ -3,21 +3,6 @@
 // Log tag
 static const char *TAG = "USBMIDI";
 
-// String descriptors
-const char *USBMIDI::s_str_desc[5] = {
-    (char[]){0x09, 0x04},  // Supported language
-    "nyakoLab",            // Manufacturer
-    "Fami32",              // Product
-    "000721",              // Serial number
-    "Fami32 MIDI I/O",     // MIDI interface
-};
-
-// Configuration descriptor
-const uint8_t USBMIDI::s_midi_cfg_desc[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 2, 0, TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN, 0, 100),
-    TUD_MIDI_DESCRIPTOR(0, 4, 0x01, 0x81, 64),
-};
-
 // Constructor
 USBMIDI::USBMIDI() : initialized(false), readTaskHandle(NULL), callback(NULL) {}
 
@@ -32,20 +17,6 @@ USBMIDI::~USBMIDI() {
 bool USBMIDI::begin() {
     if (initialized) {
         ESP_LOGE(TAG, "USBMIDI already initialized");
-        return false;
-    }
-
-    // Initialize TinyUSB
-    tinyusb_config_t tusb_cfg = {
-        .device_descriptor = NULL,
-        .string_descriptor = s_str_desc,
-        .string_descriptor_count = sizeof(s_str_desc) / sizeof(s_str_desc[0]),
-        .external_phy = false,
-        .configuration_descriptor = s_midi_cfg_desc,
-    };
-    esp_err_t ret = tinyusb_driver_install(&tusb_cfg);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize TinyUSB: %s", esp_err_to_name(ret));
         return false;
     }
 

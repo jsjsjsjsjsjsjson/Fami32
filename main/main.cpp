@@ -3,9 +3,6 @@
 #include <Adafruit_Keypad.h>
 #include <MPR121_Keypad.h>
 
-#include <esp_spi_flash.h>
-#include <esp_littlefs.h>
-
 #include <driver/i2s_std.h>
 #include "fami32_pin.h"
 #include "ftm_file.h"
@@ -13,6 +10,8 @@
 #include <dirent.h>
 #include <USBMIDI.h>
 #include "gui.h"
+#include "tinyusb.h"
+#include "tusb_msc_storage.h"
 
 bool _debug_print = false;
 bool _midi_output = false;
@@ -150,6 +149,52 @@ void midi_callback(midiEventPacket_t packet) {
     }
 }
 
+static esp_err_t storage_init_spiflash(wl_handle_t *wl_handle)
+{
+    ESP_LOGI("USB_MSC", "Initializing wear levelling");
+
+    const esp_partition_t *data_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, NULL);
+    if (data_partition == NULL) {
+        ESP_LOGE("USB_MSC", "Failed to find FATFS partition. Check the partition table.");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    return wl_mount(data_partition, wl_handle);
+}
+
+// String descriptors
+const char *s_str_desc[5] = {
+    (char[]){0x09, 0x04},  // Supported language
+    "nyakoLab",            // Manufacturer
+    "Fami32",              // Product
+    "000721",              // Serial number
+    "Fami32 Data and MIDI",
+};
+
+// Configuration descriptor
+const uint8_t usb_cfg_desc[] = {
+    TUD_CONFIG_DESCRIPTOR(1, 2, 0, TUD_CONFIG_DESC_LEN + TUD_MSC_DESC_LEN + TUD_MIDI_DESC_LEN, 0, 100),
+    TUD_MSC_DESCRIPTOR(0, 0, 0x01, 0x81, 64), // EP1 OUT, EP1 IN
+    TUD_MIDI_DESCRIPTOR(1, 0, 0x02, 0x82, 64), // EP2 OUT, EP2 IN
+};
+
+bool init_tinyusb() {
+    // Initialize TinyUSB
+    tinyusb_config_t tusb_cfg = {
+        .device_descriptor = NULL,
+        .string_descriptor = s_str_desc,
+        .string_descriptor_count = sizeof(s_str_desc) / sizeof(s_str_desc[0]),
+        .external_phy = false,
+        .configuration_descriptor = usb_cfg_desc,
+    };
+    esp_err_t ret = tinyusb_driver_install(&tusb_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE("USB INIT", "Failed to initialize TinyUSB: %s", esp_err_to_name(ret));
+        return false;
+    }
+    return true;
+}
+
 void app_main_cpp() {
     SPI.begin((gpio_num_t)DISPLAY_SCL, (gpio_num_t)-1, (gpio_num_t)DISPLAY_SDA);
     display.begin();
@@ -178,13 +223,12 @@ void app_main_cpp() {
         display.display();
     }
 
-    esp_vfs_littlefs_conf_t conf = {
-        .base_path = "/flash",
-        .partition_label = "flash",
+    esp_vfs_fat_mount_config_t fat_conf = {
         .format_if_mount_failed = true,
-        .dont_mount = false,
+        .max_files = 1
     };
-    esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    wl_handle_t wl_handle;
+    esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "flash", &fat_conf, &wl_handle);
     printf("\nLittleFS mount %d: %s\n", ret, esp_err_to_name(ret));
 
     if (read_config(config_path) != CONFIG_SUCCESS) {
@@ -192,55 +236,34 @@ void app_main_cpp() {
         display.printf("Create new config...");
         display.display();
         printf("NO CONFIG FILE FOUND.\nCREATE IT...\n");
-        if (set_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE) == CONFIG_SUCCESS) {
-            printf("Updated 'SAMPLE_RATE' to %d\n", SAMP_RATE);
-        }
-        if (set_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED) == CONFIG_SUCCESS) {
-            printf("Updated 'ENG_SPEED' to %d\n", ENG_SPEED);
-        }
-        if (set_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF) == CONFIG_SUCCESS) {
-            printf("Updated 'LPF_CUTOFF' to %d\n", LPF_CUTOFF);
-        }
-        if (set_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF) == CONFIG_SUCCESS) {
-            printf("Updated 'HPF_CUTOFF' to %d\n", HPF_CUTOFF);
-        }
-        if (set_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
-            printf("Updated 'BASE_FREQ_HZ' to %d\n", BASE_FREQ_HZ);
-        }
-        if (set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
-            printf("Updated 'OVER_SAMPLE' to %d\n", OVER_SAMPLE);
-        }
-        if (set_config_value("VOLUME", CONFIG_INT, &g_vol) == CONFIG_SUCCESS) {
-            printf("Updated 'VOLUME' to %d\n", g_vol);
-        }
+        set_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE);
+        set_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED);
+        set_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF);
+        set_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF);
+        set_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ);
+        set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
+        set_config_value("VOLUME", CONFIG_INT, &g_vol);
         if (write_config(config_path) != CONFIG_SUCCESS) {
             printf("Failed to write config file.\n");
         }
         esp_restart();
     }
 
-    if (get_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE) == CONFIG_SUCCESS) {
-        printf("SAMPLE_RATE: %d\n", SAMP_RATE);
-    }
-    if (get_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED) == CONFIG_SUCCESS) {
-        printf("ENG_SPEED: %d\n", ENG_SPEED);
-    }
-    if (get_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF) == CONFIG_SUCCESS) {
-        printf("LPF_CUTOFF: %d\n", LPF_CUTOFF);
-    }
-    if (get_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF) == CONFIG_SUCCESS) {
-        printf("HPF_CUTOFF: %d\n", HPF_CUTOFF);
-    }
-    if (get_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ) == CONFIG_SUCCESS) {
-        printf("BASE_FREQ_HZ: %d\n", BASE_FREQ_HZ);
-    }
-    if (get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE) == CONFIG_SUCCESS) {
-        printf("OVER_SAMPLE: %d\n", OVER_SAMPLE);
-    }
-    if (get_config_value("VOLUME", CONFIG_INT, &g_vol) == CONFIG_SUCCESS) {
-        printf("VOLUME: %d\n", g_vol);
-    }
+    get_config_value("SAMPLE_RATE", CONFIG_INT, &SAMP_RATE);
+    get_config_value("ENGINE_SPEED", CONFIG_INT, &ENG_SPEED);
+    get_config_value("LPF_CUTOFF", CONFIG_INT, &LPF_CUTOFF);
+    get_config_value("HPF_CUTOFF", CONFIG_INT, &HPF_CUTOFF);
+    get_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ);
+    get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
+    get_config_value("VOLUME", CONFIG_INT, &g_vol);
 
+    ESP_ERROR_CHECK(storage_init_spiflash(&wl_handle));
+    const tinyusb_msc_spiflash_config_t config_spi = {
+        .wl_handle = wl_handle,
+        .mount_config = {.max_files = 5}
+    };
+    ESP_ERROR_CHECK(tinyusb_msc_storage_init_spiflash(&config_spi));
+    init_tinyusb();
     MIDI.begin();
 
     display.setCursor(0, 59);
@@ -283,7 +306,7 @@ void app_main_cpp() {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreatePinnedToCore(gui_task, "GUI", 20480, NULL, 6, &GUI_TASK, 1);
+    xTaskCreatePinnedToCore(gui_task, "GUI", 20480, NULL, 7, &GUI_TASK, 1);
 }
 
 extern "C" void app_main(void) { app_main_cpp(); }
