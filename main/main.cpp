@@ -12,6 +12,7 @@
 #include "gui.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
+#include "boot_check.h"
 
 bool _debug_print = false;
 bool _midi_output = false;
@@ -199,9 +200,12 @@ void app_main_cpp() {
     SPI.begin((gpio_num_t)DISPLAY_SCL, (gpio_num_t)-1, (gpio_num_t)DISPLAY_SDA);
     display.begin();
     display.clearDisplay();
-    display.display();
 
-    vTaskDelay(200);
+    if (boot_check()) {
+        show_check_info(&display, &keypad, FAMI32_VERSION, FAMI32_SUBVERSION);
+    }
+
+    vTaskDelay(128);
 
     for (int i = 0; i < 32; i++) {
         display.fillScreen(1);

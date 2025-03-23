@@ -59,6 +59,13 @@
         "new": "cpp",
         "*.tcc": "cpp",
         "numbers": "cpp",
-        "startup_internal.h": "c"
+        "startup_internal.h": "c",
+        "boot_check.h": "c",
+        "esp_core_dump.h": "c",
+        "adafruit_ssd1306.h": "c",
+        "adafruit_gfx.h": "c",
+        "wire.h": "c",
+        "spi.h": "c",
+        "src_config.h": "c"
     }
 }

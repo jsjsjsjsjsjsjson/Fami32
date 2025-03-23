@@ -1134,13 +1134,19 @@ void test_displayKeyboard() {
 }
 
 void reboot_page() {
-    static const char *menu_str[2] = {"NO", "YES"};
-    int ret = menu("REBOOT?", menu_str, 2, NULL, 42, 29, 0, 0, 0);
-    if (ret == 1) {
+    static const char *menu_str[3] = {"NORMAL", "StoreProhibit", "LoadProhibit"};
+    int ret = menu("REBOOT...", menu_str, 3, NULL, 60, 37);
+    if (ret == 0) {
         display.setFont(&rismol57);
         drawPopupBox("REBOOTING...");
         display.display();
         esp_restart();
+    } else if (ret == 1) {
+        int *test = 0;
+        *test = rand();
+    } else if (ret == 2) {
+        int *test = 0;
+        printf("%d", *test);
     }
 }
 
