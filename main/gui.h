@@ -1914,7 +1914,11 @@ void quick_gen_sequ(sequences_t *sequ, uint32_t type, uint32_t index) {
     ftm.resize_sequ_len(type, index, len);
     if (mode == 0) {
         for (int i = 0; i < len; i++) {
-            sequ->data[i] = roundf(mathEnv[style][direction](i, count, len) * 15.01f);
+            if (direction) {
+                sequ->data[len - 1 - i] = roundf(mathEnv[style](i, count, len) * 15.01f);
+            } else {
+                sequ->data[i] = roundf(mathEnv[style](i, count, len) * 15.01f);
+            }
             if (sequ->data[i] > 15) sequ->data[i] = 15;
         }
     } else if (mode == 1) {

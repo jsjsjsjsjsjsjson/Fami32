@@ -9,27 +9,12 @@ const char *math_env_name[MATH_ENV_NUM] = {
     "SQUARE", "SQUART", "EXP", "SIN", "LINEAR"
 };
 
-float (*mathEnv[MATH_ENV_NUM][2])(int x, float a, int l) = {
-    { 
-        [](int x, float a, int l) { return sqrtf(a * x * (1.0f / l)); }, 
-        [](int x, float a, int l) { return sqrtf(((-a * x) + 1.0f) * (1.0f / l)); }
-    },
-    {
-        [](int x, float a, int l) { return exp2f(a * x * (1.0f / l)); },
-        [](int x, float a, int l) { return 1.0f - exp2f(a * x * (1.0f / l)); }
-    },
-    {
-        [](int x, float a, int l) { return expf(-a * x * (1.0f / l)); },
-        [](int x, float a, int l) { return expf((a * x * (1.0f / l)) - a); }
-    },
-    {
-        [](int x, float a, int l) { return sinf(a * x * (M_PI / (2.0f * l))); },
-        [](int x, float a, int l) { return sinf(-a * x * (M_PI / (2.0f * l))) + 1.0f; }
-    },
-    {
-        [](int x, float a, int l) { return a * x * (1.0f / l); },
-        [](int x, float a, int l) { return (-a * x * (1.0f / l)) + 1.0f; }
-    }
+float (*mathEnv[MATH_ENV_NUM])(int x, float a, int l) = {
+    [](int x, float a, int l) { return sqrtf(a * x * (1.0f / l)); },
+    [](int x, float a, int l) { return exp2f(a * x * (1.0f / l)); },
+    [](int x, float a, int l) { return expf(-a * x * (1.0f / l)); },
+    [](int x, float a, int l) { return sinf(a * x * (M_PI / (2.0f * l))); },
+    [](int x, float a, int l) { return a * x * (1.0f / l); },
 };
 
 #define CHORD_ENV_NUM 39
