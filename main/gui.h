@@ -13,6 +13,7 @@
 #include "fonts/rismol_5_7.h"
 #include "fonts/font4x6.h"
 #include <USBMIDI.h>
+#include "env_gen.h"
 
 #include "ringbuf.h"
 
@@ -1861,6 +1862,83 @@ void frames_menu() {
     }
 }
 
+void quick_gen_sequ(sequences_t *sequ, uint32_t type, uint32_t index) {
+    int mode = 0;
+    int style = 0;
+    int direction = 0;
+    int len = 1;
+    int count = 1;
+    int last_ret = 0;
+
+    static const char *fristMenuStr[6] = {"MODE", "STYLE", "DIRECTION", "LENGTH", "COUNT", "OK!"};
+    static const char *modeMenuStr[3] = {"NORMAL", "ARPEGGIO", "RANDOM"};
+    static const char *dirMenuStr[2] = {"FORWARD", "REVERSE"};
+
+    for (;;) {
+        int ret = menu("QUICK GEN.", fristMenuStr, 6, NULL, 64, 53, 0, 0, last_ret);
+        if (ret == 0) {
+            int ret = menu("MODE", modeMenuStr, 3, NULL, 52, 37, 0, 0, mode);
+            if (ret != -1) {
+                if (ret != mode) style = 0;
+                mode = ret;
+            }
+        } else if (ret == 1) {
+            if (mode != 2) {
+                int ret = menu("STYLE", mode ? chordNames : math_env_name, mode ? CHORD_ENV_NUM : MATH_ENV_NUM, NULL, 64, 53, 0, 0, style);
+                if (ret != -1) {
+                    style = ret;
+                    if (mode == 1) len = count * chordLengths[style];
+                }
+            } else {
+                num_set_menu_int("RAND MAX", 1, 255, 1, &style, 0, 0, 62, 32);
+                if (style < 1) style = 1;
+            }
+        } else if (ret == 2) {
+            if (mode != 2) {
+                int ret = menu("DIRECTION", dirMenuStr, 2, NULL, 60, 29, 0, 0, direction);
+                if (ret != -1) direction = ret;
+            }
+        } else if (ret == 3) {
+            num_set_menu_int("LENGTH", 1, 255, 1, &len, 0, 0, 62, 32);
+        } else if (ret == 4) {
+            num_set_menu_int("COUNT", 1, 255, 1, &count, 0, 0, 62, 32);
+        } else if (ret == 5) {
+            break;
+        } else {
+            return;
+        }
+        last_ret = ret;
+    }
+
+    drawPopupBox("PLEASE WAIT...");
+    ftm.resize_sequ_len(type, index, len);
+    if (mode == 0) {
+        for (int i = 0; i < len; i++) {
+            sequ->data[i] = roundf(mathEnv[style][direction](i, count, len) * 15.01f);
+            if (sequ->data[i] > 15) sequ->data[i] = 15;
+        }
+    } else if (mode == 1) {
+        for (int i = 0; i < len; i++) {
+            if (direction) {
+                sequ->data[len - 1 - i] = chords[style][(i / count) % chordLengths[style]];
+            } else {
+                sequ->data[i] = chords[style][(i / count) % chordLengths[style]];
+            }
+        }
+    } else if (mode == 2) {
+        int c = 0;
+        int var = rand() % style;
+        for (int i = 0; i < len; i++) {
+            sequ->data[i] = var;
+            c++;
+            if (c >= count) {
+                var = rand() % style;
+                c = 0;
+            }
+        }
+    }
+}
+
 void sequence_editor(instrument_t *inst) {
     int sequ_type = 0;
 
@@ -2058,6 +2136,16 @@ void sequence_editor(instrument_t *inst) {
                     case 3:
                         num_set_menu_int("SEQU INDEX", 0, 255, 1, &sequ_index_ref, 0, 0, 64, 34);
                         inst->seq_index[sequ_type].seq_index = sequ_index_ref;
+                        break;
+
+                    case 4:
+                        if (sequ != NULL) {
+                            quick_gen_sequ(sequ, sequ_type, inst->seq_index[sequ_type].seq_index);
+                            sequ_sel_index = sequ->length - 1;
+                        } else {
+                            drawPopupBox("CREATE THIS SEQUENCE FIRST!");
+                            vTaskDelay(1024);
+                        }
                         break;
 
                     default:

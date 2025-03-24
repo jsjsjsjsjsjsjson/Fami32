@@ -67,5 +67,6 @@
         "wire.h": "c",
         "spi.h": "c",
         "src_config.h": "c"
-    }
+    },
+    "C_Cpp.errorSquiggles": "enabled"
 }

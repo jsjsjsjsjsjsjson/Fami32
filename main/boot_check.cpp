@@ -64,7 +64,7 @@ void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad, int ver
     display->setCursor(0, 11);
 
     display->println("INFO:");
-    display->printf("%s at PC: 0x%08lX\n", summary.exc_task, summary.exc_pc);
+    display->printf("TASK \"%s\" @ 0x%08lX\n", summary.exc_task, summary.exc_pc);
     display->printf("EXCVADDR: 0x%08lX\n", summary.ex_info.exc_vaddr);
     display->printf("CAUSE: %s\n", get_exc_cause_name(summary.ex_info.exc_cause));
 
@@ -87,6 +87,11 @@ void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad, int ver
         keypad->tick();
         vTaskDelay(2);
     }
+    display->clearDisplay();
+    display->setFont(&rismol57);
+    display->setCursor(0, 0);
+    display->print("REBOOT...");
+    display->display();
     esp_restart();
 }
 
