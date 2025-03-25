@@ -1,9 +1,4 @@
-#ifndef ENV_GEN_H
-#define ENV_GEN_H
-
-#include <math.h>
-
-#define MATH_ENV_NUM 5
+#include "env_gen.h"
 
 const char *math_env_name[MATH_ENV_NUM] = {
     "SQUARE", "SQUART", "EXP", "SIN", "LINEAR"
@@ -16,8 +11,6 @@ float (*mathEnv[MATH_ENV_NUM])(int x, float a, int l) = {
     [](int x, float a, int l) { return sinf(a * x * (M_PI / (2.0f * l))); },
     [](int x, float a, int l) { return a * x * (1.0f / l); },
 };
-
-#define CHORD_ENV_NUM 39
 
 const char *chordNames[CHORD_ENV_NUM] = {
     "C Major",            // 大三和弦 (C major)
@@ -150,5 +143,3 @@ char chords[CHORD_ENV_NUM][5] = {
     {0, 4, 8, 12, 16},  // C增五和弦加八 (C+5+8)
     {0, 1, 3, 5, 7},    // 半音和弦 (C Half step chord)
 };
-
-#endif

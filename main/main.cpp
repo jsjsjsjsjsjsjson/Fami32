@@ -9,7 +9,8 @@
 #include "tracker.h"
 #include <dirent.h>
 #include <USBMIDI.h>
-#include "gui.h"
+#include "gui/gui_common.h"
+#include "gui/gui_input.h"
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
 #include "boot_check.h"

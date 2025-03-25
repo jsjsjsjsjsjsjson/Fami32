@@ -67,7 +67,10 @@
         "wire.h": "c",
         "spi.h": "c",
         "src_config.h": "c",
-        "wave_table.h": "c"
+        "wave_table.h": "c",
+        "compare": "cpp",
+        "micro_config.h": "c",
+        "regex": "cpp"
     },
     "C_Cpp.errorSquiggles": "enabled"
 }

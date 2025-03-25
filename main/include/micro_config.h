@@ -6,9 +6,9 @@
 #define CONFIG_FILE_ERROR -2
 #define CONFIG_KEY_NOT_FOUND -3
 
-#define MAX_ENTRIES 100
-#define MAX_KEY_LENGTH 50
-#define MAX_STRING_LENGTH 100
+#define MAX_ENTRIES 64
+#define MAX_KEY_LENGTH 32
+#define MAX_STRING_LENGTH 64
 
 typedef enum {
     CONFIG_INT,
