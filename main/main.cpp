@@ -18,6 +18,8 @@ bool _debug_print = false;
 bool _midi_output = false;
 bool edit_mode = false;
 
+int g_vol = 16;
+
 extern "C" {
 #include "micro_config.h"
 }
@@ -231,9 +233,9 @@ void app_main_cpp() {
         .format_if_mount_failed = true,
         .max_files = 1
     };
-    wl_handle_t wl_handle;
-    esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "flash", &fat_conf, &wl_handle);
-    printf("\nLittleFS mount %d: %s\n", ret, esp_err_to_name(ret));
+    wl_handle_t wl_flash_handle;
+    esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "flash", &fat_conf, &wl_flash_handle);
+    printf("\nFatFS mount %d: %s\n", ret, esp_err_to_name(ret));
 
     if (read_config(config_path) != CONFIG_SUCCESS) {
         display.setCursor(0, 59);
@@ -261,9 +263,10 @@ void app_main_cpp() {
     get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
     get_config_value("VOLUME", CONFIG_INT, &g_vol);
 
-    ESP_ERROR_CHECK(storage_init_spiflash(&wl_handle));
+    wl_handle_t wl_usbmsc_handle;
+    ESP_ERROR_CHECK(storage_init_spiflash(&wl_usbmsc_handle));
     const tinyusb_msc_spiflash_config_t config_spi = {
-        .wl_handle = wl_handle,
+        .wl_handle = wl_usbmsc_handle,
         .mount_config = {.max_files = 5}
     };
     ESP_ERROR_CHECK(tinyusb_msc_storage_init_spiflash(&config_spi));

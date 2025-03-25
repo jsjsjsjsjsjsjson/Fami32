@@ -4,14 +4,14 @@
 #define FAMI32_VERSION 1
 #define FAMI32_SUBVERSION 6
 
-int SAMP_RATE = 96000;
-int ENG_SPEED = 60;
+extern int SAMP_RATE;
+extern int ENG_SPEED;
 
-int LPF_CUTOFF = 18000;
-int HPF_CUTOFF = 32;
+extern int LPF_CUTOFF;
+extern int HPF_CUTOFF;
 
-int OVER_SAMPLE = 4;
+extern int OVER_SAMPLE;
 
-const char *config_path = "/flash/FM32CONF.CNF";
+extern const char *config_path;
 
 #endif

@@ -212,46 +212,4 @@ private:
     float alpha;
 };
 
-class Limiter {
-public:
-    Limiter(int16_t threshold, float soft_knee) {
-        init(threshold, soft_knee);
-    }
-
-    void init(int16_t threshold, float soft_knee) {
-        this->threshold = threshold;
-        this->soft_knee = soft_knee;
-    }
-
-    int16_t audioLimit(int32_t inputSample) {
-        int16_t absInputSample = inputSample > 0 ? inputSample : -inputSample;
-
-        if (absInputSample > threshold) {
-            float normalizedExcess = (float)(absInputSample - threshold) / soft_knee;
-            float compressedExcess = tanhf(normalizedExcess) * soft_knee;
-            int16_t compressedSample = threshold + (int16_t)compressedExcess;
-            return inputSample > 0 ? compressedSample : -compressedSample;
-        } else {
-            return inputSample;
-        }
-    }
-
-private:
-    int16_t threshold;
-    float soft_knee;
-};
-
-size_t convolve(int16_t *x1, uint16_t len1, const float *core, uint16_t core_len, int16_t *result) {
-    size_t result_len = len1 + core_len - 1;
-    memset(result, 0, result_len * sizeof(int16_t));
-    /*
-    for (uint16_t i = 0; i < len1; i++) {
-        for (uint16_t j = 0; j < core_len; j++) {
-            result[i + j] += x1[i] * core[j];
-        }
-    }
-    */
-    return result_len;
-}
-
 #endif
