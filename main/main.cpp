@@ -6,7 +6,7 @@
 #include <driver/i2s_std.h>
 #include "fami32_pin.h"
 #include "ftm_file.h"
-#include "tracker.h"
+#include "fami32_player.h"
 #include <dirent.h>
 #include <USBMIDI.h>
 #include "gui/gui_common.h"

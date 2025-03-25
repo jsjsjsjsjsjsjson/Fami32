@@ -21,7 +21,7 @@
 #include "fami32_icon.h"
 #include "env_gen.h"
 #include "ftm_file.h"
-#include "tracker.h"
+#include "fami32_player.h"
 extern "C" {
 #include "micro_config.h"
 }
