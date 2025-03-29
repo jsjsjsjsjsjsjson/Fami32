@@ -294,6 +294,15 @@ void FAMI_CHANNEL::update_tick() {
         }
     }
 
+    if (delay_cut_status) {
+        if (delay_cut_count) {
+            delay_cut_count--;
+        } else {
+            note_cut();
+            delay_cut_status = false;
+        }
+    }
+
     make_tick_sound();
 
     if (mode != DPCM_SAMPLE) {
@@ -363,15 +372,6 @@ void FAMI_CHANNEL::update_tick() {
             if (arp_fx_pos > 2) {
                 arp_fx_pos = 0;
             }
-        }
-    }
-
-    if (delay_cut_status) {
-        if (delay_cut_count) {
-            delay_cut_count--;
-        } else {
-            note_cut();
-            delay_cut_status = false;
         }
     }
 

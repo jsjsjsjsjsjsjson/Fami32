@@ -14,6 +14,7 @@ void high_pass_set();
 void finetune_set();
 void over_sample_set();
 void midi_out_set();
+void debug_print_set();
 void erase_config_set();
 void reboot_page();
 

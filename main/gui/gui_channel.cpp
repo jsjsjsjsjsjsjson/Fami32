@@ -65,7 +65,6 @@ uint8_t fx_help_menu() {
 
 void channel_menu() {
     static uint8_t x_pos = 0;
-    display.setFont(&font3x5);
     for (;;) {
         display.clearDisplay();
 

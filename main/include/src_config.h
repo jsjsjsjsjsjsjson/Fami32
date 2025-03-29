@@ -2,7 +2,7 @@
 #define SRC_CONFIG_H
 
 #define FAMI32_VERSION 1
-#define FAMI32_SUBVERSION 6
+#define FAMI32_SUBVERSION 7
 
 extern int SAMP_RATE;
 extern int ENG_SPEED;

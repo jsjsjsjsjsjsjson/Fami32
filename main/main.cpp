@@ -212,7 +212,7 @@ void app_main_cpp() {
 
     for (int i = 0; i < 32; i++) {
         display.fillScreen(1);
-        display.drawBitmap(48, 0, fami32_logo, 32, 32, 0);
+        display.drawBitmap(48, 1, fami32_logo, 32, 32, 0);
         display.setTextColor(0);
         display.setFont(&rismol57);
         display.setCursor(47, 33);
@@ -293,7 +293,7 @@ void app_main_cpp() {
 
     for (int i = 16; i > 0; i--) {
         display.fillScreen(1);
-        display.drawBitmap(48, 0, fami32_logo, 32, 32, 0);
+        display.drawBitmap(48, 1, fami32_logo, 32, 32, 0);
         display.setTextColor(0);
         display.setFont(&rismol57);
         display.setCursor(47, 33);

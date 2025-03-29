@@ -74,6 +74,14 @@ void midi_out_set() {
     }
 }
 
+void debug_print_set() {
+    static const char *opt[2] = {"OFF", "ON"};
+    int choice = menu("DEBUG PRINT", opt, 2, nullptr, 60, 29, 0, 0, _debug_print);
+    if (choice != -1) {
+        _debug_print = choice;
+    }
+}
+
 // Reset (erase) configuration option
 void erase_config_set() {
     static const char *confirm_str[2] = {"NO", "YES"};
@@ -106,17 +114,17 @@ void reboot_page() {
 
 // Settings menu page that consolidates various engine settings
 void settings_page() {
-    static const char *settings_items[9] = {
+    static const char *settings_items[10] = {
         "SAMPLE RATE", "ENGINE SPEED", "LOW PASS", "HIGH PASS", 
-        "FINETUNE", "OVER SAMPLE", "VOLUME", "MIDI OUT", "RESET CONFIG"
+        "FINETUNE", "OVER SAMPLE", "VOLUME", "MIDI OUT", "DEBUG PRINT", "RESET CONFIG"
     };
     // Corresponding action functions for each setting
-    void (*settings_actions[9])(void) = {
+    void (*settings_actions[10])(void) = {
         samp_rate_set, eng_speed_set, low_pass_set, high_pass_set,
-        finetune_set, over_sample_set, vol_set_page, midi_out_set, erase_config_set
+        finetune_set, over_sample_set, vol_set_page, midi_out_set, debug_print_set, erase_config_set
     };
     // Display a full-screen settings menu
-    fullScreenMenu("SETTINGS", settings_items, 9, settings_actions, 0);
+    fullScreenMenu("SETTINGS", settings_items, 10, settings_actions, 0);
     // After returning from menu, save config if needed and possibly reboot
     drawPopupBox("SAVE CONFIG...");
     display.display();
