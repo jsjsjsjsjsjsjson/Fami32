@@ -30,11 +30,11 @@ const char* file_select(const char *basePath) {
     int dir_cache_size = 0;
 
     // Draw header
-    display.setTextColor(SSD1306_BLACK);
-    display.fillRect(0, 0, 128, 6, SSD1306_WHITE);
+    display.setTextColor(0);
+    display.fillRect(0, 0, 128, 6, 1);
     display.setCursor(0, 0);
     display.print("FILE SELECTOR/MANAGER");
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(1);
 
     for (;;) {
         if (directory_changed) {
@@ -52,7 +52,7 @@ const char* file_select(const char *basePath) {
             if (!dir) {
                 display.clearDisplay();
                 display.setTextSize(1);
-                display.setTextColor(SSD1306_WHITE);
+                display.setTextColor(1);
                 display.setCursor(0, 0);
                 display.print("ERROR OPENING DIRECTORY:");
                 display.setCursor(0, 8);
@@ -67,7 +67,7 @@ const char* file_select(const char *basePath) {
             if (n < 0) {
                 display.clearDisplay();
                 display.setTextSize(1);
-                display.setTextColor(SSD1306_WHITE);
+                display.setTextColor(1);
                 display.setCursor(0, 0);
                 display.print("ERROR READING DIRECTORY");
                 display.display();
@@ -96,20 +96,20 @@ const char* file_select(const char *basePath) {
         }
 
         // Draw file list region
-        display.fillRect(0, 6, 128, 58, SSD1306_BLACK);
+        display.fillRect(0, 6, 128, 58, 0);
         display.setCursor(0, 7);
         display.printf(":%s", current_path);
-        display.drawFastHLine(0, 13, 128, SSD1306_WHITE);
+        display.drawFastHLine(0, 13, 128, 1);
         if (dir_cache_size > 0) {
             // List directory entries
             for (int i = top; i < top + display_lines && i < dir_cache_size; ++i) {
                 int rowIndex = i - top;
                 if (i == selected) {
                     // Highlight selected entry
-                    display.fillRect(0, 15 + rowIndex * 6, 128, 7, SSD1306_WHITE);
-                    display.setTextColor(SSD1306_BLACK);
+                    display.fillRect(0, 15 + rowIndex * 6, 128, 7, 1);
+                    display.setTextColor(0);
                 } else {
-                    display.setTextColor(SSD1306_WHITE);
+                    display.setTextColor(1);
                 }
                 display.setCursor(0, 16 + rowIndex * 6);
                 if (dir_cache[i].is_dir) {
@@ -121,7 +121,7 @@ const char* file_select(const char *basePath) {
                     display.print(dir_cache[i].name);
                 }
                 if (i == selected) {
-                    display.setTextColor(SSD1306_WHITE);
+                    display.setTextColor(1);
                 }
             }
         } else {

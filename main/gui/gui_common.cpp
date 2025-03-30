@@ -55,13 +55,13 @@ void drawPopupBox(const char* message) {
     int boxY = (64 - boxHeight) / 2;
 
     // Draw popup background and border
-    display.fillRect(boxX + 1, boxY + 1, boxWidth - 2, boxHeight - 2, SSD1306_BLACK);
-    display.drawRect(boxX - 1, boxY - 1, boxWidth + 2, boxHeight + 2, SSD1306_BLACK);
-    display.drawRect(boxX, boxY, boxWidth, boxHeight, SSD1306_WHITE);
+    display.fillRect(boxX + 1, boxY + 1, boxWidth - 2, boxHeight - 2, 0);
+    display.drawRect(boxX - 1, boxY - 1, boxWidth + 2, boxHeight + 2, 0);
+    display.drawRect(boxX, boxY, boxWidth, boxHeight, 1);
 
     // Draw text inside box
     display.setCursor(boxX + 2, boxY + 2);
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(1);
     display.print(message);
     display.display();
 }

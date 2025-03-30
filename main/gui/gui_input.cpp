@@ -72,15 +72,15 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
         // Draw input UI
         display.clearDisplay();
         display.setFont(&rismol57);
-        display.fillRect(0, 0, 128, 9, SSD1306_WHITE);
+        display.fillRect(0, 0, 128, 9, 1);
         display.setCursor(1, 1);
-        display.setTextColor(SSD1306_BLACK);
+        display.setTextColor(0);
         display.print(title);
-        display.setTextColor(SSD1306_WHITE);
+        display.setTextColor(1);
         display.setFont(NULL);  // use default font for input area
 
         // Text input area border
-        display.drawRect(0, 16, 128, 11, SSD1306_WHITE);
+        display.drawRect(0, 16, 128, 11, 1);
         display.setCursor(2, 18);
         int16_t len = strlen(targetStr);
         if (len > 20) {
@@ -93,29 +93,29 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
         display.print(cursorState ? '_' : ' ');
 
         // Draw keyboard grid (2 rows x 8 columns)
-        display.drawFastHLine(0, 43, 128, SSD1306_WHITE);
-        display.drawFastHLine(0, 53, 128, SSD1306_WHITE);
-        display.drawFastHLine(0, 63, 128, SSD1306_WHITE);
+        display.drawFastHLine(0, 43, 128, 1);
+        display.drawFastHLine(0, 53, 128, 1);
+        display.drawFastHLine(0, 63, 128, 1);
         for (uint8_t i = 0; i < 8; ++i) {
-            display.drawFastVLine(i * 16, 44, 19, SSD1306_WHITE);
+            display.drawFastVLine(i * 16, 44, 19, 1);
         }
-        display.drawFastVLine(127, 44, 19, SSD1306_WHITE);
+        display.drawFastVLine(127, 44, 19, 1);
         // Draw letters A-P (or next set depending on charOfst)
         for (uint8_t c = 0; c < 8; ++c) {
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(1);
             display.setCursor((c * 16) + 6, 55);
             if (keyboardStat[c]) {
-                display.fillRect(display.getCursorX() - 5, display.getCursorY() - 1, 15, 9, SSD1306_WHITE);
-                display.setTextColor(SSD1306_BLACK);
+                display.fillRect(display.getCursorX() - 5, display.getCursorY() - 1, 15, 9, 1);
+                display.setTextColor(0);
             }
             display.printf("%c", c + charOfst);
         }
         for (uint8_t c = 8; c < 16; ++c) {
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(1);
             display.setCursor(((c - 8) * 16) + 6, 45);
             if (keyboardStat[c]) {
-                display.fillRect(display.getCursorX() - 5, display.getCursorY() - 1, 15, 9, SSD1306_WHITE);
-                display.setTextColor(SSD1306_BLACK);
+                display.fillRect(display.getCursorX() - 5, display.getCursorY() - 1, 15, 9, 1);
+                display.setTextColor(0);
             }
             display.printf("%c", c + charOfst);
         }
@@ -181,13 +181,13 @@ void test_displayKeyboard() {
     ESP_LOGI("TEST_KEYBOARD", "Input string: %s", testStr);
     // Display the result on screen
     display.clearDisplay();
-    display.fillRect(0, 0, 128, 9, SSD1306_WHITE);
+    display.fillRect(0, 0, 128, 9, 1);
     display.setFont(&rismol57);
     display.setCursor(1, 1);
-    display.setTextColor(SSD1306_BLACK);
+    display.setTextColor(0);
     display.print("TEST KEYBOARD");
     display.setFont(&rismol35);
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(1);
     display.setCursor(0, 12);
     display.setTextWrap(true);
     display.printf("Return! testStr:\n%s\n", testStr);

@@ -108,7 +108,7 @@ void osc_menu() {
 }
 
 void visual_menu() {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(1);
     // Use ring buffers to store history of pitch and volume values for each channel
     static ringbuf<uint8_t, 128> visual_buf[5];
     static ringbuf<uint8_t, 128> visual_buf_vol[5];
@@ -138,8 +138,8 @@ void visual_menu() {
                 uint8_t pitchHistory = visual_buf[c][127 - y];
                 uint8_t volHistory = visual_buf_vol[c][127 - y];
                 // Draw horizontal lines representing volume (two lines to make a thicker point)
-                display.drawFastHLine(pitchHistory, y + 5, volHistory, SSD1306_WHITE);
-                display.drawFastHLine(pitchHistory - volHistory + 1, y + 5, volHistory, SSD1306_WHITE);
+                display.drawFastHLine(pitchHistory, y + 5, volHistory, 1);
+                display.drawFastHLine(pitchHistory - volHistory + 1, y + 5, volHistory, 1);
             }
         }
         // Display song info at bottom

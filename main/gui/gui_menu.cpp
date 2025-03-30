@@ -14,7 +14,7 @@ void invertRect(int x, int y, int w, int h) {
 void drawChessboard(int x, int y, int w, int h) {
     for (int row = 0; row < h; ++row) {
         for (int col = 0; col < w; ++col) {
-            display.drawPixel(x + col, y + row, ((row + col) & 1) ? SSD1306_WHITE : SSD1306_BLACK);
+            display.drawPixel(x + col, y + row, ((row + col) & 1) ? 1 : 0);
         }
     }
 }
@@ -106,11 +106,11 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
             uint16_t itemYPos = y + 10 + (displayIndex * 8);
 
             if (i == menuPos) {
-                display.fillRect(x, itemYPos + 1, width, 7, SSD1306_WHITE);
-                display.setTextColor(SSD1306_BLACK);
+                display.fillRect(x, itemYPos + 1, width, 7, 1);
+                display.setTextColor(0);
                 display.setCursor(x + 4, itemYPos + 2);
             } else {
-                display.setTextColor(SSD1306_WHITE);
+                display.setTextColor(1);
                 display.setCursor(x + 3, itemYPos + 2);
             }
 
