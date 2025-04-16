@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <math.h>
+#include <algorithm>
 
 #include <vector>
 
@@ -80,86 +81,6 @@ private:
     float wetMix = 0.0f;
 };
 
-typedef struct {
-    int numDelays = 0;
-    float decay = 0;
-    float mix = 0;
-    float roomSize = 0;
-    float damping = 0;
-} reverb_config_t;
-
-class AudioReverb {
-public:
-    AudioReverb() : sampleRate(0), numDelays(4), feedback(0.0f), dampingFactor(0.0f), mix(0.0f) {}
-
-    void initialize(int sampleRate, const reverb_config_t& config) {
-        this->sampleRate = sampleRate;
-        this->numDelays = config.numDelays;
-        this->config = config;
-
-        delayLines.clear();
-        delayIndices.clear();
-        lastOutputs.clear();
-
-        for (int i = 0; i < numDelays; ++i) {
-            int delayLength = static_cast<int>(sampleRate * config.roomSize * (0.5f + (i * 0.5f) / numDelays));
-            delayLines.push_back(std::vector<int16_t>(delayLength, 0));
-            delayIndices.push_back(0);
-            lastOutputs.push_back(0.0f);
-        }
-
-        feedback = config.decay;
-        dampingFactor = config.damping;
-        mix = config.mix;
-    }
-
-    int16_t process(int16_t inputSample) {
-        int32_t reverbSample = 0;
-        for (int i = 0; i < numDelays; ++i) {
-            auto& delayLine = delayLines[i];
-            int& delayIndex = delayIndices[i];
-            int16_t delayedSample = delayLine[delayIndex];
-            lastOutputs[i] = (delayedSample * (1.0f - dampingFactor)) + (lastOutputs[i] * dampingFactor);
-            delayLine[delayIndex] = static_cast<int16_t>((inputSample + lastOutputs[i] * feedback));
-            delayIndex = (delayIndex + 1) % delayLine.size();
-            reverbSample += lastOutputs[i];
-        }
-        reverbSample /= numDelays;
-        return static_cast<int16_t>(inputSample * (1.0f - mix) + reverbSample * mix);
-    }
-
-    void setRoomSize(float roomSize) {
-        config.roomSize = roomSize;
-        initialize(sampleRate, config);
-    }
-
-    void setDecay(float decay) {
-        config.decay = decay;
-        feedback = decay;
-    }
-
-    void setDamping(float damping) {
-        config.damping = damping;
-        dampingFactor = damping;
-    }
-
-    void setMix(float mix) {
-        config.mix = mix;
-        this->mix = mix;
-    }
-
-private:
-    uint32_t sampleRate;                     // 采样率
-    uint8_t numDelays;                      // 延迟线数量
-    reverb_config_t config;             // 配置参数
-    std::vector<std::vector<int16_t>> delayLines;  // 多个延迟线缓冲区
-    std::vector<int> delayIndices;      // 多个延迟线当前索引
-    std::vector<float> lastOutputs;     // 每个延迟线的最后输出，用于低通滤波
-    float feedback;                     // 反馈系数
-    float dampingFactor;                // 阻尼系数（低通滤波的系数）
-    float mix;                          // 干湿信号混合比例
-};
-
 class LowPassFilter {
 public:
     int32_t process(int32_t sample) {
@@ -210,6 +131,177 @@ private:
     uint16_t cutoffFreqIn;
     uint16_t sampleRate;
     float alpha;
+};
+
+typedef struct {
+    int numDelays = 16;
+    float decay = 0.65f;
+    float mix = 0.4f;
+    float roomSize = 0.7f;
+    float damping = 0.4f;
+} reverb_config_t;
+
+class AudioReverb {
+public:
+    AudioReverb() : sampleRate(0), numDelays(4), feedback(0.0f), dampingFactor(0.0f), mix(0.0f) {}
+
+    void initialize(int sampleRate, const reverb_config_t& config) {
+        this->sampleRate = sampleRate;
+        this->numDelays = config.numDelays;
+        this->config = config;
+
+        delayLines.clear();
+        delayIndices.clear();
+        lastOutputs.clear();
+
+        // 基于质数的延迟线时间基数
+        static const int primeDelays[] = {7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47};
+
+        for (int i = 0; i < numDelays; ++i) {
+            // 计算差异化延迟时间
+            float baseDelayMs = primeDelays[i % 12] * config.roomSize;
+            int delayLength = static_cast<int>(sampleRate * baseDelayMs / 100.0f);
+            // float delayFactor = 0.25f + (i * 0.75f) / numDelays;
+            // int delayLength = static_cast<int>(sampleRate * config.roomSize * delayFactor);
+            delayLines.push_back(std::vector<int16_t>(delayLength, 0));
+            delayIndices.push_back(0);
+            lastOutputs.push_back(0.0f);
+        }
+
+        feedback = config.decay;
+        dampingFactor = config.damping;
+        mix = config.mix;
+    }
+
+    int16_t process(int16_t inputSample) {
+        int32_t reverbSample = 0;
+
+        // 处理每个延迟线的反馈
+        for (int i = 0; i < numDelays; ++i) {
+            auto& delayLine = delayLines[i];
+            int& delayIndex = delayIndices[i];
+
+            // 获取延迟样本并计算新的输出（带一阶低通）
+            int16_t delayedSample = delayLine[delayIndex];
+            lastOutputs[i] = (delayedSample * (1.0f - dampingFactor)) + (lastOutputs[i] * dampingFactor);
+
+            // 将新样本写入延迟线
+            delayLine[delayIndex] = static_cast<int16_t>((inputSample + lastOutputs[i] * feedback));
+            
+            // 更新延迟线的索引
+            delayIndex = (delayIndex + 1) % delayLine.size();
+
+            // 累加每个延迟线的输出
+            reverbSample += lastOutputs[i];
+        }
+
+        // 计算最终的混响样本
+        reverbSample /= numDelays;
+
+        return static_cast<int16_t>(inputSample * (1.0f - mix) + reverbSample * mix);
+    }
+
+    void setRoomSize(float roomSize) {
+        config.roomSize = roomSize;
+        initialize(sampleRate, config);
+    }
+
+    void setDecay(float decay) {
+        config.decay = decay;
+        feedback = decay;
+    }
+
+    void setDamping(float damping) {
+        config.damping = damping;
+        dampingFactor = damping;
+    }
+
+    void setMix(float mix) {
+        config.mix = mix;
+        this->mix = mix;
+    }
+
+private:
+    uint32_t sampleRate;                     // 采样率
+    uint8_t numDelays;                       // 延迟线数量
+    reverb_config_t config;                  // 配置参数
+    std::vector<std::vector<int16_t>> delayLines;  // 多个延迟线缓冲区
+    std::vector<int> delayIndices;           // 多个延迟线当前索引
+    std::vector<float> lastOutputs;          // 每个延迟线的最后输出
+    float feedback;                          // 反馈系数（Decay）
+    float dampingFactor;                     // 阻尼系数（低通滤波系数）
+    float mix;                               // 干湿比
+};
+
+class TubeSimulator {
+private:
+    // 电子管特性参数
+    float preGain;      // 输入增益
+    float postGain;     // 输出增益
+    float bias;         // 偏置电压
+    float drive;        // 驱动强度/失真量
+    float mix;          // 原始信号与处理信号混合比例 (0.0 - 1.0)
+    
+    // 内部状态
+    float prevSample;   // 用于简单的滤波
+
+public:
+    TubeSimulator(float preGain = 1.0f, float postGain = 1.0f, 
+                 float bias = 0.0f, float drive = 2.0f, float mix = 1.0f) 
+        : preGain(preGain), postGain(postGain), bias(bias), 
+          drive(drive), mix(mix), prevSample(0.0f) {
+    }
+    
+    // 重置内部状态
+    void reset() {
+        prevSample = 0.0f;
+    }
+    
+    // 设置参数
+    void setPreGain(float value) { preGain = value; }
+    void setPostGain(float value) { postGain = value; }
+    void setBias(float value) { bias = value; }
+    void setDrive(float value) { drive = value; }
+    void setMix(float value) { mix = std::clamp(value, 0.0f, 1.0f); }
+    
+    // 处理单个样本
+    int16_t process(int16_t sample) {
+        // 将输入样本转换为浮点数并归一化 (-1.0 到 1.0)
+        float input = static_cast<float>(sample) / 32768.0f;
+        
+        // 应用预增益
+        input *= preGain;
+        
+        // 保存原始信号用于后续混合
+        float dry = input;
+        
+        // 应用偏置电压
+        input += bias;
+        
+        // 电子管模拟 - 使用非对称软剪裁函数
+        float output;
+        if (input >= 0.0f) {
+            // 正半周的模拟
+            output = 1.0f - expf(-input * drive);
+        } else {
+            // 负半周的模拟 (非对称响应特性)
+            output = -1.0f + expf(input * drive * 0.8f);
+        }
+        
+        // 简单的低通滤波以模拟电子管的频率响应
+        output = 0.8f * output + 0.2f * prevSample;
+        prevSample = output;
+        
+        // 应用后增益
+        output *= postGain;
+        
+        // 混合干湿信号
+        output = output * mix + dry * (1.0f - mix);
+        
+        // 限制范围并转回int16_t
+        output = std::clamp(output, -1.0f, 1.0f);
+        return static_cast<int16_t>(output * 32767.0f);
+    }
 };
 
 #endif

@@ -287,7 +287,7 @@ void app_main_cpp() {
     keypad.read();
 
     xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 8, &SOUND_TASK_HD, 0);
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 2048, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 4096, NULL, 3, NULL, 1);
 
     MIDI.setCallback(midi_callback);
 

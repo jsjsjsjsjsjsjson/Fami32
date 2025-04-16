@@ -103,9 +103,9 @@ void channel_menu() {
                 unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row() + r);
                 if (pt_tmp.note != NO_NOTE) {
                     if (pt_tmp.note == NOTE_CUT)
-                        display.printf("--- ");
+                        display.printf("CUT ");
                     else if (pt_tmp.note == NOTE_END)
-                        display.printf("=== ");
+                        display.printf("RLS ");
                     else {
                         if (channel_sel_pos == 3)
                             display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));
@@ -129,7 +129,7 @@ void channel_menu() {
                     if (pt_tmp.fxdata[fx].fx_cmd) {
                         display.printf(" %c%02X", fx2char[pt_tmp.fxdata[fx].fx_cmd], pt_tmp.fxdata[fx].fx_var);
                     } else {
-                        display.printf(" ...");
+                        display.printf(" ---");
                     }
                 }
             }

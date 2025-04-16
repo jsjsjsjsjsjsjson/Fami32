@@ -101,9 +101,9 @@ void frames_menu() {
                                                 r + ((player.get_row() / 9) * 9));
             if (pt_tmp.note != NO_NOTE) {
                 if (pt_tmp.note == NOTE_CUT)
-                    display.printf("--- ");
+                    display.printf("CUT ");
                 else if (pt_tmp.note == NOTE_END)
-                    display.printf("=== ");
+                    display.printf("RLS ");
                 else {
                     if (channel_sel_pos == 3)
                         display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));
