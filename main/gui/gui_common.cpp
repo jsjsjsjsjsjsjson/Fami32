@@ -29,9 +29,6 @@ const char ch_name[5][10] = {
 // Pause audio playback and clear audio buffer
 void pause_sound() {
     player.stop_play();
-    size_t written;
-    memset(player.get_buf(), 0, player.get_buf_size_byte());
-    i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &written, portMAX_DELAY);
 }
 
 // Start/resume audio playback

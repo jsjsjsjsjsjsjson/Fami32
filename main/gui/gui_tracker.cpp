@@ -112,9 +112,9 @@ void tracker_menu() {
                     unpk_item_t pt_tmp = ftm.get_pt_item(i, player.get_cur_frame_map(i), player.get_row() + r);
                     if (pt_tmp.note != NO_NOTE) {
                         if (pt_tmp.note == NOTE_CUT)
-                            display.printf("CUT ");
+                            display.printf("^^^ ");
                         else if (pt_tmp.note == NOTE_END)
-                            display.printf("RLS ");
+                            display.printf("~~~ ");
                         else {
                             if (i == 3)
                                 display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));

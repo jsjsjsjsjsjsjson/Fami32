@@ -103,9 +103,9 @@ void channel_menu() {
                 unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row() + r);
                 if (pt_tmp.note != NO_NOTE) {
                     if (pt_tmp.note == NOTE_CUT)
-                        display.printf("CUT ");
+                        display.printf("^^^ ");
                     else if (pt_tmp.note == NOTE_END)
-                        display.printf("RLS ");
+                        display.printf("~~~ ");
                     else {
                         if (channel_sel_pos == 3)
                             display.printf("%X-# ", note2noise(item2note(pt_tmp.note, pt_tmp.octave)));
@@ -137,10 +137,11 @@ void channel_menu() {
         }
         display.drawFastVLine(8, 11, 53, 1);
         // display.drawFastVLine(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 53, 1);
-        if (ftm.he_block.ch_fx[channel_sel_pos] < 3)
-            display.fillRect(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 106 - (59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16)), 53, 1);
-        else
-            display.drawFastVLine(106, 11, 53, 1);
+        if (ftm.he_block.ch_fx[channel_sel_pos] < 3) {
+            drawChessboard(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 106 - (59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16)), 53);
+            display.drawFastVLine(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 53, 1);
+        }
+        display.drawFastVLine(105, 11, 53, 1);
 
         if (edit_mode) {
             if (x_pos < 4) {
@@ -165,16 +166,14 @@ void channel_menu() {
         } else {
             display.printf("\n\n");
         }
-        display.setCursor(107, display.getCursorY());
-        display.printf("CHAN:\n");
-        display.setCursor(107, display.getCursorY());
-        display.printf("%ld\n\n", player.channel[channel_sel_pos].get_inst()->index);
-        display.setCursor(107, display.getCursorY());
-        display.printf("SEL:\n");
-        display.setCursor(107, display.getCursorY());
-        display.printf("%d\n\n", inst_sel_pos);
-        display.setCursor(107, display.getCursorY() - 1);
-        display.printf("FX:%d", ftm.ch_fx_count(channel_sel_pos));
+
+        int draw_base = 117;
+        for (int y = 11; y < 63; y++) {
+            int16_t p1 = limit_value(player.channel[channel_sel_pos].get_buf()[y * 4] / 170, -12, 12);
+            int16_t p2 = limit_value(player.channel[channel_sel_pos].get_buf()[(y + 1) * 4] / 170, -12, 12);
+
+            display.drawLine(draw_base + p2, y, draw_base + p1, y, 1);
+        }
 
         display.display();
 

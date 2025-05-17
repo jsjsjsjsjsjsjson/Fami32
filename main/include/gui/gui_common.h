@@ -65,4 +65,6 @@ void drawPopupBox(const char* message);
 // Declaration of GUI task loop (to be run in main or OS task)
 void gui_task(void *arg);
 
+#define limit_value(value, min, max) (value < min) ? min : (value > max) ? max : value
+
 #endif // GUI_COMMON_H
