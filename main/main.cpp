@@ -66,12 +66,12 @@ void sound_task(void *arg) {
 
     // Serial.begin(921600);
 
-    size_t writed;
+    size_t written;
 
     for (;;) {
         sound_task_stat = true;
         player.process_tick();
-        i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &writed, portMAX_DELAY);
+        i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &written, portMAX_DELAY);
         // serial_audio(player.get_buf(), player.get_buf_size());
         sound_task_stat = false;
         vTaskDelay(1);
@@ -199,7 +199,7 @@ bool init_tinyusb() {
     return true;
 }
 
-void app_main_cpp() {
+extern "C" void app_main(void) {
     SPI.begin((gpio_num_t)DISPLAY_SCL, (gpio_num_t)-1, (gpio_num_t)DISPLAY_SDA);
     display.begin();
     display.clearDisplay();
@@ -314,7 +314,5 @@ void app_main_cpp() {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreatePinnedToCore(gui_task, "GUI", 20480, NULL, 7, &GUI_TASK, 1);
+    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 7, &GUI_TASK, 1);
 }
-
-extern "C" void app_main(void) { app_main_cpp(); }

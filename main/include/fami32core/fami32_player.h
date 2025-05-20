@@ -3,6 +3,7 @@
 
 #include "fami32_common.h"
 #include "fami32_channel.h"
+#include "src_config.h"
 
 class FAMI_PLAYER {
 private:

@@ -141,7 +141,7 @@ void channel_menu() {
             drawChessboard(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 106 - (59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16)), 53);
             display.drawFastVLine(59 + (ftm.he_block.ch_fx[channel_sel_pos] * 16), 11, 53, 1);
         }
-        display.drawFastVLine(105, 11, 53, 1);
+        display.drawFastVLine(106, 11, 53, 1);
 
         if (edit_mode) {
             if (x_pos < 4) {
@@ -167,7 +167,7 @@ void channel_menu() {
             display.printf("\n\n");
         }
 
-        int draw_base = 117;
+        int draw_base = 118;
         for (int y = 11; y < 63; y++) {
             int16_t p1 = limit_value(player.channel[channel_sel_pos].get_buf()[y * 4] / 170, -12, 12);
             int16_t p2 = limit_value(player.channel[channel_sel_pos].get_buf()[(y + 1) * 4] / 170, -12, 12);
