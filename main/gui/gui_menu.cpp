@@ -3,18 +3,14 @@
 
 // Invert the pixels in a rectangle (useful for highlighting selection)
 void invertRect(int x, int y, int w, int h) {
-    for (int i = x; i < x + w; ++i) {
-        for (int j = y; j < y + h; ++j) {
-            display.drawPixel(i, j, !display.getPixel(i, j));
-        }
-    }
+    display.fillRect(x, y, w, h, 2);
 }
 
 // Draw a chessboard (checkered) pattern in the given rectangle (used for shading regions or muted areas)
 void drawChessboard(int x, int y, int w, int h) {
     for (int row = 0; row < h; ++row) {
         for (int col = 0; col < w; ++col) {
-            display.drawPixel(x + col, y + row, ((row + col) & 1) ? 1 : 0);
+            if ((row + col) & 1) display.drawPixel(x + col, y + row, 1);
         }
     }
 }
@@ -23,7 +19,7 @@ void drawChessboard(int x, int y, int w, int h) {
 void drawPinstripe(int x, int y, int w, int h) {
     for (int row = 0; row < h; ++row) {
         for (int col = 0; col < w; ++col) {
-            display.drawPixel(x + col, y + row, !((row + col) & 3));
+            display.drawPixel(x + col, y + row, !((row + col) & 3) ? 2 : 0);
         }
     }
 }
@@ -237,7 +233,7 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
 
 // The main navigation menu: allows user to choose major UI sections (Tracker, Channel, Frames, etc.)
 void menu_navi() {
-    drawPinstripe(0, 0, 128, 64);
+    drawChessboard(0, 0, 128, 64);
     static const char *menu_items[7] = {
         "TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSCILLOSCOPE", "VISUALIZATION"
     };

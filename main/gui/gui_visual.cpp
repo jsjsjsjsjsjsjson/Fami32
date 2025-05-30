@@ -3,6 +3,32 @@
 #include "gui_tracker.h"   // for menu_navi(), main_option_page()
 #include "gui_input.h"
 
+
+int find_trigger_point(int16_t *buffer, size_t size, int trigger_level = 0, bool rising_edge = true) {
+    const int display_height = 52;
+    const int half_display = display_height / 2;
+    size_t search_start = half_display;
+    size_t search_end = size - half_display;
+    if (search_start >= size || search_end <= search_start) {
+        return (size > display_height) ? half_display : 0;
+    }
+    for (size_t i = search_start + 1; i < search_end; i++) {
+        int16_t prev = buffer[(i - 1) * 4];
+        int16_t curr = buffer[i * 4];
+
+        if (rising_edge) {
+            if (prev < trigger_level && curr >= trigger_level) {
+                return i;
+            }
+        } else {
+            if (prev > trigger_level && curr <= trigger_level) {
+                return i;
+            }
+        }
+    }
+    return (search_start + search_end) / 2;
+}
+
 void osc_menu() {
     for (;;) {
         display.clearDisplay();
@@ -45,17 +71,34 @@ void osc_menu() {
             }
         }
 
+
         for (int i = 0; i < 5; i++) {
             int draw_base = (i * 24) + 19;
-            // display.drawFastVLine((i * 24) + 19, 11, 53, 1);
             if (player.get_mute(i)) {
                 drawPinstripe((i * 24) + 8, 11, 23, 53);
             }
-            for (int y = 11; y < 63; y++) {
-                int16_t p1 = limit_value(player.channel[i].get_buf()[y * 4] / 170, -12, 12);
-                int16_t p2 = limit_value(player.channel[i].get_buf()[(y + 1) * 4] / 170, -12, 12);
 
-                display.drawLine(draw_base + p2, y, draw_base + p1, y, 1);
+            int16_t *buf = player.channel[i].get_buf();
+            size_t buf_size = player.channel[i].get_buf_size();
+            
+            const int display_height = 52;
+            const int half_display = display_height / 2;  // 26
+
+            int trigger_index = find_trigger_point(buf, buf_size);
+            int display_start = trigger_index - half_display;
+            if (display_start < 0) {
+                display_start = 0;
+            }
+            
+            for (int y = 0; y < display_height; y++) {
+                int buf_index = display_start + y;
+                int16_t p1 = 0;
+                int16_t p2 = 0;
+                if ((buf_index * 4) < buf_size && ((buf_index + 1) * 4) < buf_size) {
+                    p1 = limit_value(buf[buf_index * 4] / 170, -12, 12);
+                    p2 = limit_value(buf[(buf_index + 1) * 4] / 170, -12, 12);
+                }
+                display.drawLine(draw_base + p2, y + 11, draw_base + p1, y + 11, 1);
             }
         }
 
@@ -200,6 +243,6 @@ void visual_menu() {
             touchKeypadEvent e = touchKeypad.read();
             update_touchpad_note(nullptr, nullptr, e);
         }
-        vTaskDelay(4);
+        vTaskDelay(3);
     }
 }

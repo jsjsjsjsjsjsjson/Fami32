@@ -99,6 +99,33 @@ const uint8_t bayerMatrix[4][4] = {
     { 240, 112, 208,  80 }
 };
 
+void drawFami32Splash(Adafruit_SSD1306 &display) {
+    display.fillScreen(1);
+    display.drawBitmap(48, 1, fami32_logo, 32, 32, 0);
+    display.setTextColor(0);
+    display.setFont(&rismol57);
+    display.setCursor(47, 33);
+    display.print("FAMI32");
+    display.setFont(&rismol35);
+    display.setCursor(0, 0);
+    display.printf("V%d.%d-STABLE", FAMI32_VERSION, FAMI32_SUBVERSION);
+    display.setCursor(0, 47);
+    display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
+}
+
+void bayerDitherFade(Adafruit_SSD1306 &display, int steps, int factor, bool fadeIn) {
+    for (int i = 0; i < steps; i++) {
+        drawFami32Splash(display);
+        int fadeValue = fadeIn ? (i * factor) : ((steps - i) * factor);
+        for (int x = 0; x < 128; x++) {
+            for (int y = 0; y < 64; y++) {
+                display.drawPixel(x, y, (display.getPixel(x, y) * fadeValue) > bayerMatrix[y & 3][x & 3]);
+            }
+        }
+        display.display();
+    }
+}
+
 void midi_callback(midiEventPacket_t packet) {
     static midiEventData_t e;
     memcpy(&e, &packet, 4);
@@ -210,25 +237,7 @@ extern "C" void app_main(void) {
 
     vTaskDelay(128);
 
-    for (int i = 0; i < 32; i++) {
-        display.fillScreen(1);
-        display.drawBitmap(48, 1, fami32_logo, 32, 32, 0);
-        display.setTextColor(0);
-        display.setFont(&rismol57);
-        display.setCursor(47, 33);
-        display.print("FAMI32");
-        display.setFont(&rismol35);
-        display.setCursor(0, 0);
-        display.printf("V%d.%d-IDF", FAMI32_VERSION, FAMI32_SUBVERSION);
-        display.setCursor(0, 47);
-        display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
-        for (int x = 0; x < 128; x++) {
-            for (int y = 0; y < 64; y++) {
-                display.drawPixel(x, y, (display.getPixel(x, y) * (i * 8)) > bayerMatrix[y & 3][x & 3]);
-            }
-        }
-        display.display();
-    }
+    bayerDitherFade(display, 32, 8, true);
 
     esp_vfs_fat_mount_config_t fat_conf = {
         .format_if_mount_failed = true,
@@ -291,25 +300,7 @@ extern "C" void app_main(void) {
 
     MIDI.setCallback(midi_callback);
 
-    for (int i = 16; i > 0; i--) {
-        display.fillScreen(1);
-        display.drawBitmap(48, 1, fami32_logo, 32, 32, 0);
-        display.setTextColor(0);
-        display.setFont(&rismol57);
-        display.setCursor(47, 33);
-        display.print("FAMI32");
-        display.setFont(&rismol35);
-        display.setCursor(0, 0);
-        display.printf("V%d.%d-IDF", FAMI32_VERSION, FAMI32_SUBVERSION);
-        display.setCursor(0, 47);
-        display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
-        for (int x = 0; x < 128; x++) {
-            for (int y = 0; y < 64; y++) {
-                display.drawPixel(x, y, (display.getPixel(x, y) * (i * 16)) > bayerMatrix[y & 3][x & 3]);
-            }
-        }
-        display.display();
-    }
+    bayerDitherFade(display, 16, 16, false);
 
     display.setFont(&rismol35);
     display.setTextColor(1);

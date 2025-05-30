@@ -15,7 +15,7 @@ void channel_sel_page() {
 
 // Channel settings menu: select channel or adjust extended effect count
 void channel_setting_page() {
-    drawPinstripe(0, 0, 128, 64);
+    drawChessboard(0, 0, 128, 64);
     static const char *options[2] = {"SELECT CHAN", "EXT EFX NUM"};
     char title[16];
     snprintf(title, sizeof(title), "CHANNEL%d", channel_sel_pos);
@@ -26,7 +26,7 @@ void channel_setting_page() {
             channel_sel_page();
             break;
         case 1:  // Set number of effect columns for this channel
-            drawPinstripe(0, 0, 128, 64);
+            drawChessboard(0, 0, 128, 64);
             num_set_menu_int("EXT EFX NUM", 0, 3, 1, &tmp, 0, 0, 64, 32);
             ftm.he_block.ch_fx[channel_sel_pos] = tmp;
             break;
@@ -269,7 +269,7 @@ void channel_menu() {
                         }
                         ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                     } else {
-                        drawPinstripe(0, 0, 128, 64);
+                        drawChessboard(0, 0, 128, 64);
                         channel_sel_page();
                     }
                     copy_mode = false;

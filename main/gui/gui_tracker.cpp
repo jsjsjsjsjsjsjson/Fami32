@@ -233,7 +233,7 @@ void tracker_menu() {
 }
 
 void main_option_page() {
-    drawPinstripe(0, 0, 128, 64);
+    drawChessboard(0, 0, 128, 64);
     const char *menu_str[10] = {edit_mode ? "STOP EDIT" : "START EDIT", 
                                 player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
                                 "INSTRUMENT", "CLIPBOARD", "CHANNEL", "FILE", "SETTINGS", "VOLUME", "TEST KEYBOARD", "REBOOT"};

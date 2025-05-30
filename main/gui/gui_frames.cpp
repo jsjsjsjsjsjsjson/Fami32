@@ -4,7 +4,7 @@
 #include "gui_tracker.h"   // for menu_navi(), main_option_page() (called within frames_menu)
 
 void frames_option_page() {
-    drawPinstripe(0, 0, 128, 64);
+    drawChessboard(0, 0, 128, 64);
     static const char *menu_str[5] = {"PUSH NEW", "INSERT NEW", "MOVE UP", "MOVE DOWN", "REMOVE"};
     char title[10];
     snprintf(title, 8, "FRAME%d", player.get_frame());
