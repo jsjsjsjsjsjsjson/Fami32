@@ -212,30 +212,40 @@ void FAMI_PLAYER::process_item(unpk_item_t item, int c) {
     if (item.note != NO_NOTE) {
         if (item.note == NOTE_END) {
             channel[c].note_end();
+#ifndef DESKTOP_BUILD
             if (_midi_output && !mute[c]) {
                 MIDI.noteOff(channel[c].base_note, 0, c);
             }
+#endif
         } else if (item.note == NOTE_CUT) {
             channel[c].note_cut();
+#ifndef DESKTOP_BUILD
             if (_midi_output && !mute[c]) {
                 MIDI.noteOff(channel[c].base_note, 0, c);
             }
+#endif
         } else {
+#ifndef DESKTOP_BUILD
             if (_midi_output && !mute[c]) {
                 MIDI.noteOff(channel[c].base_note, 0, c);
             }
+#endif
             channel[c].set_note(item2note(item.note, item.octave));
             channel[c].note_start();
+#ifndef DESKTOP_BUILD
             if (_midi_output && !mute[c]) {
                 MIDI.noteOn(channel[c].base_note, (item.volume == NO_VOL ? channel[c].get_vol() : item.volume) << 3, c);
             }
+#endif
         }
     }
     if (item.volume != NO_VOL) {
         channel[c].set_vol(item.volume);
+#ifndef DESKTOP_BUILD
         if (_midi_output && !mute[c]) {
             MIDI.controlChange(7, item.volume << 3, c);
         }
+#endif
         // DBG_PRINTF("SET_VOL(C%d): %d\n", c, channel[c].get_vol());
     }
     process_efx_post(item.fxdata, c);

@@ -31,6 +31,16 @@ The application exposes its file storage as a USB mass storage device and also o
    idf.py -p /dev/ttyUSB0 flash monitor
    ```
 
+### Desktop Build
+To build a simplified player that runs on a PC you need SDL2 installed.
+Run the following commands:
+```bash
+mkdir build-desktop && cd build-desktop
+cmake ../desktop
+make
+./fami32_desktop <your_module.ftm>
+```
+
 ## Usage
 Upon reset the device mounts the internal FAT partition as `/flash` and exposes it over USB. Copy FTM modules to this storage to load them from the file menu. A configuration file is stored at `/flash/FM32CONF.CNF` and contains settings such as sample rate, engine speed and filter cut‑offs.
 

@@ -7,7 +7,9 @@
 
 #include "ftm_file.h"
 #include "basic_dsp.h"
+#ifndef DESKTOP_BUILD
 #include <USBMIDI.h>
+#endif
 
 extern "C" {
 #include "src_config.h"
@@ -18,7 +20,9 @@ extern "C" {
 extern bool _debug_print;
 extern bool _midi_output;
 
+#ifndef DESKTOP_BUILD
 extern USBMIDI MIDI;
+#endif
 
 #define VOL_SEQU 0
 #define ARP_SEQU 1
