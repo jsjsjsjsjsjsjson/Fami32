@@ -369,8 +369,14 @@ void FAMI_CHANNEL::update_tick() {
                 set_note_rely(base_note + arp_fx_n2);
             }
             arp_fx_pos++;
-            if (arp_fx_pos > 2) {
-                arp_fx_pos = 0;
+            if (arp_fx_n2) {
+                if (arp_fx_pos > 2) {
+                    arp_fx_pos = 0;
+                }
+            } else {
+                if (arp_fx_pos > 1) {
+                    arp_fx_pos = 0;
+                }
             }
         }
     }
