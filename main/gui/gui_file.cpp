@@ -307,6 +307,7 @@ void menu_file() {
             open_file_page();
             break;
         case 2:  // SAVE
+            pause_sound();
             if (strlen(ftm.current_file) == 0) {
                 // If no current filename, perform Save As
                 strcpy(current_name, "Untitled");
@@ -324,6 +325,7 @@ void menu_file() {
             }
             break;
         case 3:  // SAVE AS
+            pause_sound();
             strcpy(current_name, basename(ftm.current_file));
             if (strlen(current_name) > 4) {
                 current_name[strlen(current_name) - 4] = '\0'; // remove extension
