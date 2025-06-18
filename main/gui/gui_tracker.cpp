@@ -157,7 +157,7 @@ void tracker_menu() {
             }
 
             if (note_set) {
-                printf("INPUT_NOTE_SET: %d\n", note_set);
+                DBG_PRINTF("INPUT_NOTE_SET: %d\n", note_set);
                 if (edit_mode) {
                     unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                     pt_tmp.note = note_set;

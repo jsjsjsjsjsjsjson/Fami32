@@ -93,8 +93,8 @@ void USBMIDI::midiReadTask(void *arg) {
     USBMIDI *midi = (USBMIDI *)arg;
     midiEventPacket_t packet;
 
-    while (1) {
-        if (midi->readPacket(&packet)) {
+    for (;;) {
+        while (midi->readPacket(&packet)) {
             ESP_LOGI(TAG, "MIDI Packet Received: %02X %02X %02X %02X", packet.header, packet.byte1, packet.byte2, packet.byte3);
             if (midi->callback) {
                 midi->callback(packet);

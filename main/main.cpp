@@ -277,7 +277,7 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(storage_init_spiflash(&wl_usbmsc_handle));
     const tinyusb_msc_spiflash_config_t config_spi = {
         .wl_handle = wl_usbmsc_handle,
-        .mount_config = {.max_files = 5}
+        .mount_config = {.max_files = 4}
     };
     ESP_ERROR_CHECK(tinyusb_msc_storage_init_spiflash(&config_spi));
     init_tinyusb();
