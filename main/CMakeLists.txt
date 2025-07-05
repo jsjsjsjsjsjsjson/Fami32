@@ -10,6 +10,7 @@ idf_component_register(SRCS "main.cpp" "dpcm.c" "ftm_file.cpp" "micro_config.c" 
                             "gui/gui_settings.cpp"
                             "gui/gui_tracker.cpp"
                             "gui/gui_visual.cpp"
+                            "gui/gui_dpcm_editor.cpp"
 
                             "fami32core/fami32_channel.cpp"
                             "fami32core/fami32_instrument.cpp"

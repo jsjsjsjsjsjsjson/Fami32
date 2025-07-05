@@ -6,6 +6,7 @@
 #include "gui_info.h"
 #include "gui_instrument.h"
 #include "gui_visual.h"
+#include "gui_dpcm_editor.h"
 
 // Definition of global variables
 uint8_t main_menu_pos = 0;
@@ -82,12 +83,15 @@ void gui_task(void *arg) {
                 instrument_menu();
                 break;
             case 4:
-                song_info_menu();
+                sample_editor_menu();
                 break;
             case 5:
-                osc_menu();
+                song_info_menu();
                 break;
             case 6:
+                osc_menu();
+                break;
+            case 7:
                 visual_menu();
                 break;
             default:

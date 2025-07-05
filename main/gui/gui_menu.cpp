@@ -71,6 +71,7 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
     if (x == 0) x = (128 - width) / 2;
     if (y == 0) y = (64 - height) / 2;
 
+    display.setFont(&rismol35);
     display.setTextColor(1);
 
     int8_t menuPos = initPos;
@@ -234,10 +235,10 @@ int num_set_menu_int(const char* name, int min, int max, int count, int *num, in
 // The main navigation menu: allows user to choose major UI sections (Tracker, Channel, Frames, etc.)
 void menu_navi() {
     drawChessboard(0, 0, 128, 64);
-    static const char *menu_items[7] = {
-        "TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "INFO & SETTING", "OSCILLOSCOPE", "VISUALIZATION"
+    static const char *menu_items[8] = {
+        "TRACKER", "CHANNEL", "FRAMES", "INSTRUMENT", "DPCM SAMPLES", "INFO & SETTING", "OSCILLOSCOPE", "VISUALIZATION"
     };
-    int ret = menu("MENU", menu_items, 7, NULL, 64, 45, 0, 0, main_menu_pos);
+    int ret = menu("MENU", menu_items, 8, NULL, 64, 45, 0, 0, main_menu_pos);
     if (ret != -1) {
         // Update the selected menu index (state for gui_task)
         main_menu_pos = ret;
