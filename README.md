@@ -23,12 +23,12 @@ The application exposes its file storage as a USB mass storage device and also o
 2. Configure the project if necessary: `idf.py menuconfig`.
 3. Build the firmware:
    ```bash
-   idf.py set-target esp32
+   idf.py set-target esp32s3
    idf.py build
    ```
 4. Flash to your device:
    ```bash
-   idf.py -p /dev/ttyUSB0 flash monitor
+   idf.py -p <target COM> flash monitor
    ```
 
 ## Usage
