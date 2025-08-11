@@ -6,6 +6,21 @@
 #   idf.py build
 
 set(min_supported_idf_version "5.3.0")
+set(max_supported_idf_version "5.5.99")
+set(idf_version "${IDF_VERSION_MAJOR}.${IDF_VERSION_MINOR}.${IDF_VERSION_PATCH}")
+
+if ("${idf_version}" AND NOT "$ENV{ARDUINO_SKIP_IDF_VERSION_CHECK}")
+  if (idf_version VERSION_LESS min_supported_idf_version)
+    message(FATAL_ERROR "Arduino-esp32 can be used with ESP-IDF versions "
+                        "between ${min_supported_idf_version} and ${max_supported_idf_version}, "
+                        "but an older version is detected: ${idf_version}.")
+  endif()
+  if (idf_version VERSION_GREATER max_supported_idf_version)
+    message(FATAL_ERROR "Arduino-esp32 can be used with ESP-IDF versions "
+                        "between ${min_supported_idf_version} and ${max_supported_idf_version}, "
+                        "but a newer version is detected: ${idf_version}.")
+  endif()
+endif()
 
 set(CORE_SRCS
   cores/esp32/base64.cpp
@@ -59,32 +74,10 @@ set(CORE_SRCS
 
 set(ARDUINO_ALL_LIBRARIES
   SPI
-  # USB
   Wire
   )
 
 set(ARDUINO_LIBRARY_SPI_SRCS libraries/SPI/src/SPI.cpp)
-
-# set(ARDUINO_LIBRARY_USB_SRCS
-#   libraries/USB/src/USBHID.cpp
-#   libraries/USB/src/USBMIDI.cpp
-#   libraries/USB/src/USBHIDMouse.cpp
-#   libraries/USB/src/USBHIDKeyboard.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_da_DK.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_de_DE.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_en_US.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_es_ES.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_fr_FR.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_hu_HU.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_it_IT.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_pt_BR.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_pt_PT.cpp
-#   libraries/USB/src/keyboardLayout/KeyboardLayout_sv_SE.cpp
-#   libraries/USB/src/USBHIDGamepad.cpp
-#   libraries/USB/src/USBHIDConsumerControl.cpp
-#   libraries/USB/src/USBHIDSystemControl.cpp
-#   libraries/USB/src/USBHIDVendor.cpp
-#   libraries/USB/src/USBVendor.cpp)
 
 set(ARDUINO_LIBRARY_Wire_SRCS libraries/Wire/src/Wire.cpp)
 
@@ -108,13 +101,13 @@ endforeach()
 set(includedirs cores/esp32/ ${ARDUINO_LIBRARIES_INCLUDEDIRS})
 set(srcs ${CORE_SRCS} ${ARDUINO_LIBRARIES_SRCS})
 set(priv_includes cores/esp32/libb64)
-set(requires spi_flash esp_partition mbedtls wpa_supplicant esp_adc esp_eth http_parser esp_ringbuf esp_driver_gptimer esp_driver_usb_serial_jtag driver)
+set(requires spi_flash esp_partition mbedtls wpa_supplicant esp_adc esp_eth http_parser esp_ringbuf esp_driver_gptimer esp_driver_usb_serial_jtag driver esp_http_client esp_https_ota)
 set(priv_requires fatfs nvs_flash app_update spiffs bootloader_support bt esp_hid usb esp_psram ${ARDUINO_LIBRARIES_REQUIRES})
 
 if(NOT CONFIG_ARDUINO_SELECTIVE_COMPILATION OR CONFIG_ARDUINO_SELECTIVE_OpenThread)
   #if(CONFIG_SOC_IEEE802154_SUPPORTED) # Does not work!
   #if(CONFIG_OPENTHREAD_ENABLED) # Does not work!
-  if(IDF_TARGET STREQUAL "esp32c6" OR IDF_TARGET STREQUAL "esp32h2") # Sadly only this works
+  if(IDF_TARGET STREQUAL "esp32c6" OR IDF_TARGET STREQUAL "esp32h2" OR IDF_TARGET STREQUAL "esp32c5") # Sadly only this works
     list(APPEND requires openthread)
   endif()
 endif()

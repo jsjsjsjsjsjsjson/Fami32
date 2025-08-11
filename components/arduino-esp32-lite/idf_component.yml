@@ -10,6 +10,7 @@ targets:
   - esp32c6
   - esp32h2
   - esp32p4
+  - esp32c5
 tags:
   - arduino
 files:
@@ -22,6 +23,7 @@ files:
     - "variants/esp32c6/**/*"
     - "variants/esp32h2/**/*"
     - "variants/esp32p4/**/*"
+    - "variants/esp32c5/**/*"
   exclude:
     - "docs/"
     - "docs/**/*"
@@ -44,4 +46,4 @@ files:
     - "platform.txt"
     - "programmers.txt"
 dependencies:
-  idf: ">=5.3,<5.5"
+  idf: ">=5.3,<5.6"
