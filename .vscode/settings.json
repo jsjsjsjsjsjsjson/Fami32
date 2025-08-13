@@ -1,6 +1,6 @@
 {
     "C_Cpp.intelliSenseEngine": "default",
-    "idf.espIdfPath": "/home/libchara/esp/v5.4/esp-idf",
+    "idf.espIdfPath": "/home/libchara/esp/v5.5/esp-idf",
     "idf.toolsPath": "/home/libchara/.espressif",
     "idf.pythonInstallPath": "/usr/bin/python3",
     "idf.customExtraVars": {
