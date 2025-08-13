@@ -202,21 +202,14 @@ const char *s_str_desc[5] = {
     "Fami32 Data and MIDI",
 };
 
-// Configuration descriptor
-// const uint8_t usb_cfg_desc[] = {
-//     TUD_CONFIG_DESCRIPTOR(1, 3, 0, TUD_CONFIG_DESC_LEN + TUD_MSC_DESC_LEN + TUD_MIDI_DESC_LEN, 0x80, 100),
-//     TUD_MSC_DESCRIPTOR(0, 4, 0x01, 0x81, 64), // EP1 OUT, EP1 IN
-//     TUD_MIDI_DESCRIPTOR(1, 5, 0x02, 0x82, 64), // EP2 OUT, EP2 IN
-// };
 #define CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_MSC_DESC_LEN + TUD_MIDI_DESC_LEN)
 
+TU_ATTR_ALIGNED(4)
 uint8_t const usb_cfg_desc[] = {
     // Config number, interface count, string index, total length, attribute, power in mA
     TUD_CONFIG_DESCRIPTOR(1, 3, 0, CONFIG_TOTAL_LEN, 0x80, 100),
-
     // MSC Interface (Interface number 0)
     TUD_MSC_DESCRIPTOR(0, 4, 0x01, 0x81, 64),
-
     // MIDI Interface (Interface numbers 1 & 2)
     TUD_MIDI_DESCRIPTOR(1, 4, 0x02, 0x82, 64),
 };
