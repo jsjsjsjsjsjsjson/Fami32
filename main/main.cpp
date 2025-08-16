@@ -108,9 +108,9 @@ void drawFami32Splash(Adafruit_SSD1306 &display) {
     display.print("FAMI32");
     display.setFont(&rismol35);
     display.setCursor(0, 0);
-    display.printf("V%d.%d-STABLE", FAMI32_VERSION, FAMI32_SUBVERSION);
+    display.printf("V%d.%d-REALITY", FAMI32_VERSION, FAMI32_SUBVERSION);
     display.setCursor(0, 47);
-    display.printf("libchara-dev\n%s %s", __DATE__, __TIME__);
+    display.printf("By libchara-dev\n%s %s", __DATE__, __TIME__);
 }
 
 void bayerDitherFade(Adafruit_SSD1306 &display, int steps, int factor, bool fadeIn) {
