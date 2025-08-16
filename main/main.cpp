@@ -246,7 +246,7 @@ extern "C" void app_main(void) {
 
     esp_vfs_fat_mount_config_t fat_conf = {
         .format_if_mount_failed = true,
-        .max_files = 1
+        .max_files = 2
     };
     wl_handle_t wl_flash_handle;
     esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "flash", &fat_conf, &wl_flash_handle);

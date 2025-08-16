@@ -225,7 +225,7 @@ void FAMI_CHANNEL::make_tick_sound() {
         }
     } else if (mode > 5) {
         for (int i = 0; i < tick_length; i++) {
-            tick_buf[i] = nes_noise_make(mode - 6) * rel_vol;
+            tick_buf[i] = nes_noise_get_sample(mode - 6) * rel_vol;
         }
     } else if (mode == DPCM_SAMPLE) {
         float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
@@ -507,7 +507,7 @@ void FAMI_CHANNEL::set_noise_rate(uint8_t rate) {
 
 void FAMI_CHANNEL::set_noise_rate_rel(uint8_t rate) {
     noise_rate_rel = rate;
-    update_noise_freq(noise_freq_table[0][noise_rate_rel]);
+    nes_noise_set_period(noise_rate_rel);
 }
 
 uint8_t FAMI_CHANNEL::get_noise_rate() {
