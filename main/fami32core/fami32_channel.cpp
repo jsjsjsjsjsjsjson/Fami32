@@ -225,7 +225,7 @@ void FAMI_CHANNEL::make_tick_sound() {
         }
     } else if (mode > 5) {
         for (int i = 0; i < tick_length; i++) {
-            tick_buf[i] = nes_noise_get_sample(mode - 6) * rel_vol;
+            tick_buf[i] = (nes_noise_get_sample(mode - 6) * rel_vol) >> 4;
         }
     } else if (mode == DPCM_SAMPLE) {
         float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;

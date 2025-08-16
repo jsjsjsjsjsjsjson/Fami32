@@ -3,32 +3,6 @@
 #include "gui_tracker.h"   // for menu_navi(), main_option_page()
 #include "gui_input.h"
 
-
-int find_trigger_point(int16_t *buffer, size_t size, int trigger_level = 0, bool rising_edge = true) {
-    const int display_height = 52;
-    const int half_display = display_height / 2;
-    size_t search_start = half_display;
-    size_t search_end = size - half_display;
-    if (search_start >= size || search_end <= search_start) {
-        return (size > display_height) ? half_display : 0;
-    }
-    for (size_t i = search_start + 1; i < search_end; i++) {
-        int16_t prev = buffer[(i - 1) * 4];
-        int16_t curr = buffer[i * 4];
-
-        if (rising_edge) {
-            if (prev < trigger_level && curr >= trigger_level) {
-                return i;
-            }
-        } else {
-            if (prev > trigger_level && curr <= trigger_level) {
-                return i;
-            }
-        }
-    }
-    return (search_start + search_end) / 2;
-}
-
 void osc_menu() {
     for (;;) {
         display.clearDisplay();
@@ -71,34 +45,17 @@ void osc_menu() {
             }
         }
 
-
         for (int i = 0; i < 5; i++) {
             int draw_base = (i * 24) + 19;
+            // display.drawFastVLine((i * 24) + 19, 11, 53, 1);
             if (player.get_mute(i)) {
                 drawPinstripe((i * 24) + 8, 11, 23, 53);
             }
+            for (int y = 11; y < 63; y++) {
+                int16_t p1 = limit_value(player.channel[i].get_buf()[y * 4] / 170, -12, 12);
+                int16_t p2 = limit_value(player.channel[i].get_buf()[(y + 1) * 4] / 170, -12, 12);
 
-            int16_t *buf = player.channel[i].get_buf();
-            size_t buf_size = player.channel[i].get_buf_size();
-            
-            const int display_height = 52;
-            const int half_display = display_height / 2;  // 26
-
-            int trigger_index = find_trigger_point(buf, buf_size);
-            int display_start = trigger_index - half_display;
-            if (display_start < 0) {
-                display_start = 0;
-            }
-            
-            for (int y = 0; y < display_height; y++) {
-                int buf_index = display_start + y;
-                int16_t p1 = 0;
-                int16_t p2 = 0;
-                if ((buf_index * 4) < buf_size && ((buf_index + 1) * 4) < buf_size) {
-                    p1 = limit_value(buf[buf_index * 4] / 170, -12, 12);
-                    p2 = limit_value(buf[(buf_index + 1) * 4] / 170, -12, 12);
-                }
-                display.drawLine(draw_base + p2, y + 11, draw_base + p1, y + 11, 1);
+                display.drawLine(draw_base + p2, y, draw_base + p1, y, 1);
             }
         }
 
@@ -150,52 +107,90 @@ void osc_menu() {
     }
 }
 
+
 void visual_menu() {
     display.setTextColor(1);
-    // Use ring buffers to store history of pitch and volume values for each channel
-    static ringbuf<uint8_t, 128> visual_buf[5];
-    static ringbuf<uint8_t, 128> visual_buf_vol[5];
+    static ringbuf<uint8_t, 64> visual_buf[5];
+    static ringbuf<uint8_t, 64> visual_buf_vol[5];
     static const char chn_labels[5][4] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
-    for (;;) {
-        display.clearDisplay();
-        // Update buffers with current values for each channel
+    static bool first_run = true;
+
+    if (first_run) {
         for (int c = 0; c < 5; ++c) {
             uint8_t pitchVal;
             uint8_t volVal;
             if (c == 2) {  // Triangle channel
-                pitchVal = (uint8_t)roundf(period2note(player.channel[c].get_period_rel() * 2)) - 12;
+                pitchVal = (uint8_t)roundf(period2note(player.channel[c].get_period_rel() * 2.0f)) - 12;
                 volVal = player.channel[c].get_rel_vol() ? 2 : 0;
             } else {
-                pitchVal = (uint8_t)roundf(period2note(player.channel[c].get_period_rel())) - 12;
-                volVal = (player.channel[c].get_rel_vol() + 55) / 56;
+                float period_rel = player.channel[c].get_period_rel();
+                pitchVal = (uint8_t)roundf(period2note(period_rel)) - 12;
+                uint8_t rel_vol = player.channel[c].get_rel_vol();
+                volVal = (rel_vol + 55) / 56;
             }
-            visual_buf[c].push(pitchVal);
-            visual_buf_vol[c].push(volVal);
-            // Draw channel label at its current pitch position
-            display.setCursor(pitchVal > 5 ? pitchVal - 5 : 0, 0);
+
+            for (int i = 0; i < 64; ++i) {
+                visual_buf[c].push(pitchVal);
+                visual_buf_vol[c].push(volVal);
+            }
+        }
+        first_run = false;
+    }
+    
+    for (;;) {
+        display.clearDisplay();
+
+        static uint8_t pitchVals[5];
+        static uint8_t volVals[5];
+        
+        for (int c = 0; c < 5; ++c) {
+            if (c == 2) {  // Triangle channel
+                float period_rel = player.channel[c].get_period_rel();
+                pitchVals[c] = (uint8_t)roundf(period2note(period_rel * 2.0f)) - 12;
+                volVals[c] = player.channel[c].get_rel_vol() ? 2 : 0;
+            } else {
+                float period_rel = player.channel[c].get_period_rel();
+                pitchVals[c] = (uint8_t)roundf(period2note(period_rel)) - 12;
+                uint8_t rel_vol = player.channel[c].get_rel_vol();
+                volVals[c] = (rel_vol + 55) / 56;
+            }
+
+            visual_buf[c].push(pitchVals[c]);
+            visual_buf_vol[c].push(volVals[c]);
+
+            uint8_t label_x = pitchVals[c] > 5 ? pitchVals[c] - 5 : 0;
+            display.setCursor(label_x, 0);
             display.print(chn_labels[c]);
         }
-        // Draw the history graph (pitch vs volume) for each channel
+
         for (int y = 0; y < 123; ++y) {
+            int buf_index = 127 - y;
             for (int c = 0; c < 5; ++c) {
-                uint8_t pitchHistory = visual_buf[c][127 - y];
-                uint8_t volHistory = visual_buf_vol[c][127 - y];
-                // Draw horizontal lines representing volume (two lines to make a thicker point)
-                display.drawFastHLine(pitchHistory, y + 5, volHistory, 1);
-                display.drawFastHLine(pitchHistory - volHistory + 1, y + 5, volHistory, 1);
+                uint8_t pitchHistory = visual_buf[c][buf_index];
+                uint8_t volHistory = visual_buf_vol[c][buf_index];
+
+                if (volHistory > 0) {
+                    int draw_y = y + 5;
+                    display.drawFastHLine(pitchHistory, draw_y, volHistory, 1);
+                    int second_line_x = pitchHistory >= volHistory ? pitchHistory - volHistory + 1 : 0;
+                    display.drawFastHLine(second_line_x, draw_y, volHistory, 1);
+                }
             }
         }
-        // Display song info at bottom
+
+        const char* title = ftm.nf_block.title;
+        const char* author = ftm.nf_block.author;
+        const char* copyright = ftm.nf_block.copyright;
+        
         display.setCursor(0, 47);
-        display.println(ftm.nf_block.title);
-        display.println(ftm.nf_block.author);
-        display.println(ftm.nf_block.copyright);
-        // Display current row/frame info at bottom-right
+        display.println(title);
+        display.println(author);
+        display.println(copyright);
+
         display.setCursor(90, 59);
         display.printf("(%02X/%02lX>%02X)", player.get_row(), ftm.fr_block.pat_length, player.get_frame());
         display.display();
 
-        // Handle keypad input (similar to oscilloscope)
         if (keypad.available()) {
             keypadEvent e = keypad.read();
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
@@ -207,7 +202,6 @@ void visual_menu() {
                     }
                 } else if (e.bit.KEY == KEY_BACK) {
                     if (edit_mode) {
-                        // If in edit mode, clear copy mode data on BACK
                         unpk_item_t temp;
                         ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), temp);
                     }
@@ -238,11 +232,11 @@ void visual_menu() {
                 }
             }
         }
-        // Consume touch events (if any) to avoid stuck notes
+
         if (touchKeypad.available()) {
             touchKeypadEvent e = touchKeypad.read();
             update_touchpad_note(nullptr, nullptr, e);
         }
-        vTaskDelay(3);
+        vTaskDelay(2);
     }
 }

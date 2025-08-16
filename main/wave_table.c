@@ -30,7 +30,7 @@ int16_t nes_noise_get_sample(bool short_mode) {
                            ((noise.shift_reg >> feedback_bit) & 1)) << 14;
         noise.shift_reg = (noise.shift_reg >> 1) | feedback;
 
-        sum += (noise.shift_reg & 1) ? -8 : 7;
+        sum += (noise.shift_reg & 1) ? -128 : 127;
         updates++;
 
         if (updates > 100) break;
@@ -39,6 +39,6 @@ int16_t nes_noise_get_sample(bool short_mode) {
     if (updates > 0) {
         return sum / updates;
     } else {
-        return (noise.shift_reg & 1) ? -8 : 7;
+        return (noise.shift_reg & 1) ? -128 : 127;
     }
 }
