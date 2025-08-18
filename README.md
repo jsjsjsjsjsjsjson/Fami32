@@ -56,12 +56,8 @@ Pull requests and bug reports are welcome. Third-party libraries retain their or
 This project is distributed under the terms of the MIT license. See individual component directories for their respective licenses.
 
 ## Support me
-​I created an Afdian!
-
-I hope that the little things I do can bring in some income.
-
-So if you can, buy me a coffee ☕ !
-
-I would be very grateful ✨ 
-
+​I created an Afdian!  
+I hope that the little things I do can bring in some income.  
+So if you can, buy me a coffee ☕ !  
+I would be very grateful ✨  
 https://www.afdian.com/a/libchara
