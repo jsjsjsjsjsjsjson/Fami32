@@ -2,7 +2,8 @@
 #define _USBMIDI_H_INCLUDED
 
 #include "esp_err.h"
-#include "tinyusb.h"
+#include "tusb.h"
+#include "class/midi/midi_device.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
