@@ -7,7 +7,7 @@
 #include <Adafruit_Keypad.h>
 
 const char* get_exc_cause_name(uint32_t exc_cause);
-void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad, int ver, int subver);
+void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad);
 int boot_check();
 
 #endif

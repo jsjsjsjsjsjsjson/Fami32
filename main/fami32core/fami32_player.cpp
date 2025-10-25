@@ -96,6 +96,7 @@ void FAMI_PLAYER::mix_all_channel() {
                 r += channel[c].get_buf()[i];
         }
 
+        r = tanhf(r / (float)INT32_MAX) * INT32_MAX;
         r = hpf.process(r);
         r = lpf.process(r);
         buf[i] = (r * g_vol) >> 5;

@@ -14,6 +14,7 @@
 #include "tinyusb.h"
 #include "tusb_msc_storage.h"
 #include "boot_check.h"
+#include "../build/git_version.h"
 
 bool _debug_print = false;
 bool _midi_output = false;
@@ -107,8 +108,8 @@ void drawFami32Splash(Adafruit_SSD1306 &display) {
     display.setCursor(47, 33);
     display.print("FAMI32");
     display.setFont(&rismol35);
-    display.setCursor(0, 0);
-    display.printf("V%d.%d-REALITY", FAMI32_VERSION, FAMI32_SUBVERSION);
+    display.setCursor(1, 1);
+    display.printf("FM32-%s", get_version_string());
     display.setCursor(0, 47);
     display.printf("By libchara-dev\n%s %s", __DATE__, __TIME__);
 }
@@ -237,7 +238,7 @@ extern "C" void app_main(void) {
     display.clearDisplay();
 
     if (boot_check()) {
-        show_check_info(&display, &keypad, FAMI32_VERSION, FAMI32_SUBVERSION);
+        show_check_info(&display, &keypad);
     }
 
     vTaskDelay(128);
@@ -300,8 +301,8 @@ extern "C" void app_main(void) {
     }
     keypad.read();
 
-    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 8, &SOUND_TASK_HD, 0);
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 4096, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 0);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 3, NULL, 1);
 
     MIDI.setCallback(midi_callback);
 

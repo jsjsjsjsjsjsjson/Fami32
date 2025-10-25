@@ -189,6 +189,14 @@ void visual_menu() {
 
         display.setCursor(90, 59);
         display.printf("(%02X/%02lX>%02X)", player.get_row(), ftm.fr_block.pat_length, player.get_frame());
+
+        int16_t *buf = player.get_buf();
+        for (int x = 0; x < 128; x++) {
+            int16_t v1 = limit_value(buf[x * 2] / 256, -63, 63);
+            int16_t v2 = limit_value(buf[x * 2 + 1] / 256, -63, 63);
+            display.drawLine(x, 32 + v1, x + 1, 32 + v2, 1);
+        }
+
         display.display();
 
         if (keypad.available()) {

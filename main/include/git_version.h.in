@@ -1,0 +1,27 @@
+#ifndef VERSION_H
+#define VERSION_H
+
+#include <stdbool.h>
+
+#define PROJECT_NAME "${PROJECT_NAME}"
+#define PROJECT_VERSION "${PROJECT_VERSION}"
+
+#define GIT_COMMIT_HASH_FULL "${GIT_COMMIT_HASH_FULL}"
+#define GIT_COMMIT_HASH_SHORT "${GIT_COMMIT_HASH_SHORT}"
+#define GIT_BRANCH "${GIT_BRANCH}"
+#define GIT_DESCRIBE "${GIT_DESCRIBE}"
+#define GIT_IS_DIRTY ${GIT_IS_DIRTY}
+
+typedef struct {
+    const char* project_name;
+    const char* project_version;
+    const char* git_commit_hash;
+    const char* git_branch;
+    const char* git_describe;
+    int is_dirty;
+} version_info_t;
+
+const version_info_t* get_version_info(void);
+const char* get_version_string(void);
+
+#endif // VERSION_H

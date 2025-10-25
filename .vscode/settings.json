@@ -103,7 +103,9 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp",
-        "note2freq.h": "c"
+        "note2freq.h": "c",
+        "git_version.h": "c",
+        "*.in": "c"
     },
     "C_Cpp.errorSquiggles": "enabled"
 }

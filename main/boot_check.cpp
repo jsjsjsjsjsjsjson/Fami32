@@ -1,6 +1,7 @@
 #include "boot_check.h"
 #include "fonts/rismol_3_5.h"
 #include "fonts/rismol_5_7.h"
+#include "../build/git_version.h"
 
 #include <stdint.h>
 
@@ -50,7 +51,7 @@ const char* get_exc_cause_name(uint32_t exc_cause) {
     }
 }
 
-void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad, int ver, int subver) {
+void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad) {
     display->setFont(&rismol57);
     display->fillRect(0, 0, 128, 9, 1);
     display->setTextColor(0);
@@ -78,7 +79,7 @@ void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad, int ver
     }
 
     display->setCursor(0, 58);
-    display->printf("SHA: %s (FAMI32 V%d.%d)", summary.app_elf_sha256, ver, subver);
+    display->printf("SHA: %s (FM32-%s)", summary.app_elf_sha256, get_version_string());
     display->display();
 
     keypad->begin();
