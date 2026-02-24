@@ -211,17 +211,17 @@ void FAMI_CHANNEL::make_tick_sound() {
                 tick_buf[i] = 0;
                 continue;
             }
-            int sum = 0;
             for (int j = 0; j < OVER_SAMPLE; j++) {
                 i_pos = i_pos & 31;
-                sum += wave_table[mode][i_pos] * rel_vol;
+                int32_t sub = wave_table[mode][i_pos] * rel_vol;
+                fir_push(sub);
                 f_pos += rel_pos_count;
-                if (f_pos > 1.0f) {
+                if (f_pos >= 1.0f) {
                     i_pos += (int)f_pos;
                     f_pos -= (int)f_pos;
                 }
             }
-            tick_buf[i] = sum / OVER_SAMPLE;
+            tick_buf[i] = fir_apply_11();
         }
     } else if (mode > 5) {
         for (int i = 0; i < tick_length; i++) {

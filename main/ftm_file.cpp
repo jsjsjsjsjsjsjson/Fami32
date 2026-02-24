@@ -855,4 +855,35 @@ uint8_t FTM_FILE::get_sequ_release(int type, int index) {
     return sequences[type][index].release;
 }
 
+void FTM_FILE::new_frame() {
+    uint8_t next_pt = frames.size();
+    std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
+    frames.push_back(next_fr);
+    fr_block.frame_num = frames.size();
+}
+
+void FTM_FILE::insert_new_frame(int n) {
+    uint8_t next_pt = frames.size();
+    std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
+    frames.insert(frames.begin() + n, next_fr);
+    fr_block.frame_num = frames.size();
+}
+
+void FTM_FILE::remove_frame(int n) {
+    frames.erase(frames.begin() + n);
+    fr_block.frame_num = frames.size();
+}
+
+void FTM_FILE::moveup_frame(int n) {
+    if (n > 0 && n < frames.size()) {
+        std::swap(frames[n], frames[n - 1]);
+    }
+}
+
+void FTM_FILE::movedown_frame(int n) {
+    if (n < frames.size() - 1) {
+        std::swap(frames[n], frames[n + 1]);
+    }
+}
+
 FTM_FILE ftm;

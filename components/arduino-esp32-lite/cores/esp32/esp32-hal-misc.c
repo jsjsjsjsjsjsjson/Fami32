@@ -30,8 +30,7 @@
 #endif
 #include <sys/time.h>
 #include "soc/rtc.h"
-#if !defined(CONFIG_IDF_TARGET_ESP32C2) && !defined(CONFIG_IDF_TARGET_ESP32C6) && !defined(CONFIG_IDF_TARGET_ESP32H2) && !defined(CONFIG_IDF_TARGET_ESP32P4) \
-  && !defined(CONFIG_IDF_TARGET_ESP32C5)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
 #include "soc/rtc_cntl_reg.h"
 #include "soc/syscon_reg.h"
 #endif
@@ -59,7 +58,8 @@
 #include "esp32p4/rom/rtc.h"
 #elif CONFIG_IDF_TARGET_ESP32C5
 #include "esp32c5/rom/rtc.h"
-
+#elif CONFIG_IDF_TARGET_ESP32C61
+#include "esp32c61/rom/rtc.h"
 #else
 #error Target CONFIG_IDF_TARGET is not supported
 #endif
@@ -119,38 +119,6 @@ void __yield() {
 }
 
 void yield() __attribute__((weak, alias("__yield")));
-
-#if 0
-
-extern TaskHandle_t loopTaskHandle;
-extern bool loopTaskWDTEnabled;
-
-void enableLoopWDT() {
-  if (loopTaskHandle != NULL) {
-    if (esp_task_wdt_add(loopTaskHandle) != ESP_OK) {
-      log_e("Failed to add loop task to WDT");
-    } else {
-      loopTaskWDTEnabled = true;
-    }
-  }
-}
-
-void disableLoopWDT() {
-  if (loopTaskHandle != NULL && loopTaskWDTEnabled) {
-    loopTaskWDTEnabled = false;
-    if (esp_task_wdt_delete(loopTaskHandle) != ESP_OK) {
-      log_e("Failed to remove loop task from WDT");
-    }
-  }
-}
-
-void feedLoopWDT() {
-  esp_err_t err = esp_task_wdt_reset();
-  if (err != ESP_OK) {
-    log_e("Failed to feed WDT! Error: %d", err);
-  }
-}
-#endif
 
 void enableCore0WDT() {
   TaskHandle_t idle_0 = xTaskGetIdleTaskHandleForCore(0);
@@ -308,7 +276,7 @@ void initArduino() {
   if (err) {
     log_e("Failed to initialize NVS! Error: %u", err);
   }
-#if (defined(CONFIG_BLUEDROID_ENABLED) || defined(CONFIG_NIMBLE_ENABLED)) && SOC_BT_SUPPORTED
+#if (defined(CONFIG_BLUEDROID_ENABLED) || defined(CONFIG_NIMBLE_ENABLED)) && SOC_BT_SUPPORTED && __has_include("esp_bt.h")
   if (!btInUse()) {
     esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
   }

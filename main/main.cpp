@@ -38,8 +38,6 @@ Adafruit_Keypad keypad = Adafruit_Keypad(makeKeymap(KEYPAD_MAP),
                                         KEYPAD_ROWS, KEYPAD_COLS);
 MPR121_Keypad touchKeypad(TOUCHPAD0_ADDRS, TOUCHPAD1_ADDRS);
 
-bool sound_task_stat;
-
 void sound_task(void *arg) {
     player.init(&ftm);
 
@@ -70,12 +68,9 @@ void sound_task(void *arg) {
     size_t written;
 
     for (;;) {
-        sound_task_stat = true;
         player.process_tick();
         i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &written, portMAX_DELAY);
         // serial_audio(player.get_buf(), player.get_buf_size());
-        sound_task_stat = false;
-        vTaskDelay(1);
     }
 }
 
@@ -108,7 +103,7 @@ void drawFami32Splash(Adafruit_SSD1306 &display) {
     display.setCursor(47, 33);
     display.print("FAMI32");
     display.setFont(&rismol35);
-    display.setCursor(1, 1);
+    display.setCursor(0, 0);
     display.printf("FM32-%s", get_version_string());
     display.setCursor(0, 47);
     display.printf("By libchara-dev\n%s %s", __DATE__, __TIME__);
@@ -234,6 +229,7 @@ bool init_tinyusb() {
 
 extern "C" void app_main(void) {
     SPI.begin((gpio_num_t)DISPLAY_SCL, (gpio_num_t)-1, (gpio_num_t)DISPLAY_SDA);
+    SPI.setFrequency(80000000);
     display.begin();
     display.clearDisplay();
 

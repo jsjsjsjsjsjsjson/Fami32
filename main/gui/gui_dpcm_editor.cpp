@@ -16,8 +16,6 @@ void sample_editor_menu() {
 
         display.setTextColor(1);
 
-        display.setCursor(1, 12);
-        display.print(random());
 
         if (keypad.available()) {
             keypadEvent e = keypad.read();

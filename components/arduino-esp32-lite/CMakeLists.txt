@@ -23,9 +23,6 @@ if ("${idf_version}" AND NOT "$ENV{ARDUINO_SKIP_IDF_VERSION_CHECK}")
 endif()
 
 set(CORE_SRCS
-  cores/esp32/base64.cpp
-  cores/esp32/cbuf.cpp
-  cores/esp32/ColorFormat.c
   cores/esp32/esp32-hal-adc.c
   cores/esp32/esp32-hal-cpu.c
   cores/esp32/esp32-hal-dac.c
@@ -50,21 +47,13 @@ set(CORE_SRCS
   cores/esp32/esp32-hal-rmt.c
   cores/esp32/Esp.cpp
   cores/esp32/freertos_stats.cpp
-  cores/esp32/FunctionalInterrupt.cpp
   cores/esp32/HardwareSerial.cpp
-  cores/esp32/HEXBuilder.cpp
   cores/esp32/libb64/cdecode.c
   cores/esp32/libb64/cencode.c
-  cores/esp32/MD5Builder.cpp
   cores/esp32/Print.cpp
-  cores/esp32/SHA1Builder.cpp
-  cores/esp32/stdlib_noniso.c
   cores/esp32/Stream.cpp
   cores/esp32/StreamString.cpp
-  cores/esp32/Tone.cpp
   cores/esp32/HWCDC.cpp
-  cores/esp32/FirmwareMSC.cpp
-  cores/esp32/firmware_msc_fat.c
   cores/esp32/wiring_pulse.c
   cores/esp32/wiring_shift.c
   cores/esp32/WMath.cpp
@@ -111,7 +100,7 @@ if(NOT CONFIG_ARDUINO_SELECTIVE_COMPILATION OR CONFIG_ARDUINO_SELECTIVE_OpenThre
   endif()
 endif()
 
-if(IDF_TARGET STREQUAL "esp32p4")
+if(IDF_TARGET STREQUAL "esp32" OR IDF_TARGET STREQUAL "esp32s2" OR IDF_TARGET STREQUAL "esp32s3" OR IDF_TARGET STREQUAL "esp32p4")
   list(APPEND requires esp_driver_touch_sens)
 endif()
 

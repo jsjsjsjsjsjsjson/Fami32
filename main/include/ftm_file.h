@@ -296,36 +296,11 @@ public:
     void set_sequ_release(int type, int index, uint32_t n);
     uint8_t get_sequ_release(int type, int index);
 
-    void new_frame() {
-        uint8_t next_pt = frames.size();
-        std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
-        frames.push_back(next_fr);
-        fr_block.frame_num = frames.size();
-    }
-
-    void insert_new_frame(int n) {
-        uint8_t next_pt = frames.size();
-        std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
-        frames.insert(frames.begin() + n, next_fr);
-        fr_block.frame_num = frames.size();
-    }
-
-    void remove_frame(int n) {
-        frames.erase(frames.begin() + n);
-        fr_block.frame_num = frames.size();
-    }
-
-    void moveup_frame(int n) {
-        if (n > 0 && n < frames.size()) {
-            std::swap(frames[n], frames[n - 1]);
-        }
-    }
-
-    void movedown_frame(int n) {
-        if (n < frames.size() - 1) {
-            std::swap(frames[n], frames[n + 1]);
-        }
-    }
+    void new_frame();
+    void insert_new_frame(int n);
+    void remove_frame(int n);
+    void moveup_frame(int n);
+    void movedown_frame(int n);
 };
 
 extern FTM_FILE ftm;

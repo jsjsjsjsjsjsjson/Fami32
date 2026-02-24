@@ -51,7 +51,6 @@
 #include "esp32-hal.h"
 #include "soc/soc_caps.h"
 #include "HWCDC.h"
-
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -163,6 +162,8 @@ typedef enum {
 #define SOC_RX0 (gpio_num_t)38
 #elif CONFIG_IDF_TARGET_ESP32C5
 #define SOC_RX0 (gpio_num_t)12
+#elif CONFIG_IDF_TARGET_ESP32C61
+#define SOC_RX0 (gpio_num_t)10
 #endif
 #endif
 
@@ -181,7 +182,7 @@ typedef enum {
 #define SOC_TX0 (gpio_num_t)24
 #elif CONFIG_IDF_TARGET_ESP32P4
 #define SOC_TX0 (gpio_num_t)37
-#elif CONFIG_IDF_TARGET_ESP32C5
+#elif CONFIG_IDF_TARGET_ESP32C5 || CONFIG_IDF_TARGET_ESP32C61
 #define SOC_TX0 (gpio_num_t)11
 #endif
 #endif
@@ -208,6 +209,8 @@ typedef enum {
 #define RX1 (gpio_num_t)11
 #elif CONFIG_IDF_TARGET_ESP32C5
 #define RX1 (gpio_num_t)4
+#elif CONFIG_IDF_TARGET_ESP32C61
+#define RX1 (gpio_num_t)8
 #endif
 #endif
 
@@ -230,6 +233,8 @@ typedef enum {
 #define TX1 (gpio_num_t)10
 #elif CONFIG_IDF_TARGET_ESP32C5
 #define TX1 (gpio_num_t)5
+#elif CONFIG_IDF_TARGET_ESP32C61
+#define TX1 (gpio_num_t)29
 #endif
 #endif
 #endif /* SOC_UART_HP_NUM > 1 */
@@ -355,7 +360,12 @@ public:
 
   void setDebugOutput(bool);
 
-  void setRxInvert(bool);
+  // functions used to enable or disable UART pins signal inversion
+  // returns the requested operation success status
+  bool setRxInvert(bool);
+  bool setTxInvert(bool);
+  bool setCtsInvert(bool);
+  bool setRtsInvert(bool);
 
   // Negative Pin Number will keep it unmodified, thus this function can set individual pins
   // setPins() can be called after or before begin()
