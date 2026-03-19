@@ -114,7 +114,7 @@ esp_lcd_panel_handle_t oled_init(void)
         .dc_gpio_num = DISPLAY_DC,
         .spi_mode = 0,
         .pclk_hz = 10 * 1000 * 1000,
-        .trans_queue_depth = 2,
+        .trans_queue_depth = 4,
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
         .cs_ena_pretrans = 0,
