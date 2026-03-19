@@ -20,7 +20,7 @@ idf_component_register(SRCS "main.cpp" "dpcm.c" "ftm_file.cpp" "micro_config.c" 
 
                     PRIV_REQUIRES spi_flash
                     INCLUDE_DIRS "include" "include/gui" "include/fami32core"
-                    REQUIRES Adafruit_SSD1306 Adafruit_Keypad Adafruit_MPR121 arduino-esp32-lite bt nvs_flash USBMIDI espcoredump)
+                    REQUIRES gfx_ssd1306 Adafruit_Keypad Adafruit_MPR121 arduino-esp32-lite bt nvs_flash USBMIDI espcoredump)
 
 if(GIT_FOUND)
     execute_process(

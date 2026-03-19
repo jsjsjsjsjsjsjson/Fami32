@@ -1,8 +1,7 @@
 #include <Arduino.h>
-#include <Adafruit_SSD1306.h>
 #include <Adafruit_Keypad.h>
 #include <MPR121_Keypad.h>
-
+#include <gfx_oled_ssd1306.h>
 #include <driver/i2s_std.h>
 #include "fami32_pin.h"
 #include "ftm_file.h"
@@ -15,6 +14,12 @@
 #include "tusb_msc_storage.h"
 #include "boot_check.h"
 #include "../build/git_version.h"
+
+#include "driver/spi_master.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_io_spi.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_vendor.h"
 
 bool _debug_print = false;
 bool _midi_output = false;
@@ -31,7 +36,8 @@ i2s_chan_handle_t tx_handle;
 TaskHandle_t SOUND_TASK_HD = NULL;
 TaskHandle_t GUI_TASK = NULL;
 USBMIDI MIDI;
-Adafruit_SSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &SPI, DISPLAY_DC, DISPLAY_RESET, DISPLAY_CS);
+esp_lcd_panel_handle_t panel;
+GfxOledSSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
 Adafruit_Keypad keypad = Adafruit_Keypad(makeKeymap(KEYPAD_MAP),
                                         (uint8_t[KEYPAD_ROWS]){KEYPAD_R0, KEYPAD_R1, KEYPAD_R2, KEYPAD_R3},
                                         (uint8_t[KEYPAD_COLS]){KEYPAD_C0, KEYPAD_C1, KEYPAD_C2},
@@ -83,10 +89,78 @@ void keypad_task(void *arg) {
     }
 }
 
-void set_brigness(uint8_t var) {
-    display.ssd1306_command(SSD1306_SETCONTRAST);
-    display.ssd1306_command(var);
+esp_lcd_panel_handle_t oled_init(void)
+{
+    esp_lcd_panel_io_handle_t io_handle = NULL;
+    esp_lcd_panel_handle_t panel_handle = NULL;
+
+    // 初始化 SPI 总线
+    spi_bus_config_t buscfg = {
+        .mosi_io_num = DISPLAY_SDA,
+        .miso_io_num = -1,
+        .sclk_io_num = DISPLAY_SCL,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = DISPLAY_WIDTH * DISPLAY_HEIGHT / 8,
+    };
+
+    ESP_ERROR_CHECK(
+        spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO)
+    );
+
+    // 创建 panel IO (SPI)
+    esp_lcd_panel_io_spi_config_t io_config = {
+        .cs_gpio_num = DISPLAY_CS,
+        .dc_gpio_num = DISPLAY_DC,
+        .spi_mode = 0,
+        .pclk_hz = 10 * 1000 * 1000,
+        .trans_queue_depth = 2,
+        .lcd_cmd_bits = 8,
+        .lcd_param_bits = 8,
+        .cs_ena_pretrans = 0,
+        .cs_ena_posttrans = 0,
+        .flags = {
+            .dc_low_on_param = 1,
+        },
+    };
+
+    ESP_ERROR_CHECK(
+        esp_lcd_new_panel_io_spi(
+            (esp_lcd_spi_bus_handle_t)SPI2_HOST,
+            &io_config,
+            &io_handle
+        )
+    );
+
+    // 创建 SSD1306 panel
+    esp_lcd_panel_dev_config_t panel_config = {
+        .reset_gpio_num = DISPLAY_RESET,
+        .bits_per_pixel = 1,
+    };
+
+    ESP_ERROR_CHECK(
+        esp_lcd_new_panel_ssd1306(
+            io_handle,
+            &panel_config,
+            &panel_handle
+        )
+    );
+
+    // 初始化屏幕
+    ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
+    ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
+
+    // 开显示
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, true, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
+
+    return panel_handle;
 }
+
+// void set_brigness(uint8_t var) {
+//     display.ssd1306_command(SSD1306_SETCONTRAST);
+//     display.ssd1306_command(var);
+// }
 
 const uint8_t bayerMatrix[4][4] = {
     {  0, 128,  32, 160 },
@@ -95,7 +169,7 @@ const uint8_t bayerMatrix[4][4] = {
     { 240, 112, 208,  80 }
 };
 
-void drawFami32Splash(Adafruit_SSD1306 &display) {
+void drawFami32Splash(GfxOledSSD1306 &display) {
     display.fillScreen(1);
     display.drawBitmap(48, 1, fami32_logo, 32, 32, 0);
     display.setTextColor(0);
@@ -109,7 +183,7 @@ void drawFami32Splash(Adafruit_SSD1306 &display) {
     display.printf("By libchara-dev\n%s %s", __DATE__, __TIME__);
 }
 
-void bayerDitherFade(Adafruit_SSD1306 &display, int steps, int factor, bool fadeIn) {
+void bayerDitherFade(GfxOledSSD1306 &display, int steps, int factor, bool fadeIn) {
     for (int i = 0; i < steps; i++) {
         drawFami32Splash(display);
         int fadeValue = fadeIn ? (i * factor) : ((steps - i) * factor);
@@ -228,10 +302,9 @@ bool init_tinyusb() {
 }
 
 extern "C" void app_main(void) {
-    SPI.begin((gpio_num_t)DISPLAY_SCL, (gpio_num_t)-1, (gpio_num_t)DISPLAY_SDA);
-    SPI.setFrequency(80000000);
-    display.begin();
-    display.clearDisplay();
+    panel = oled_init();
+    printf("panel = %p\n", panel);
+    display.begin(panel);
 
     if (boot_check()) {
         show_check_info(&display, &keypad);
@@ -297,8 +370,8 @@ extern "C" void app_main(void) {
     }
     keypad.read();
 
-    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 0);
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 20, &SOUND_TASK_HD, 1);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 5, NULL, 0);
 
     MIDI.setCallback(midi_callback);
 
@@ -307,5 +380,5 @@ extern "C" void app_main(void) {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 7, &GUI_TASK, 1);
+    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 4, &GUI_TASK, 0);
 }

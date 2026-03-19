@@ -678,6 +678,7 @@ void FTM_FILE::write_dpcm() {
             tol_size += 4 + dpcm_samples[i].name_len + 4 + dpcm_samples[i].sample_size_byte;
         }
     }
+    dpcm_block.size = static_cast<uint32_t>(tol_size);
 
     size_t block_end_addr = ftell(ftm_file);
 

@@ -178,7 +178,7 @@ void FAMI_PLAYER::process_efx_pre(fx_t fxdata[4], int c) {
         } else if (fxdata[i].fx_cmd == 0x13) {
             channel[c].set_dpcm_offset(fxdata[i].fx_var);
             DBG_PRINTF("C%d: SET DPCM OFFSET %d Bytes (%d Samples)\n", c, fxdata[i].fx_var, fxdata[i].fx_var * 8);
-        }else if (fxdata[i].fx_cmd == 0x16) {
+        } else if (fxdata[i].fx_cmd == 0x16) {
             channel[c].set_vol_slide_up(HEX_B1(fxdata[i].fx_var));
             channel[c].set_vol_slide_down(HEX_B2(fxdata[i].fx_var));
             DBG_PRINTF("C%d: SET VOL_SLIDE, UP->%d - DOWN->%d = %d\n", c, HEX_B1(fxdata[i].fx_var), HEX_B2(fxdata[i].fx_var), HEX_B1(fxdata[i].fx_var) - HEX_B2(fxdata[i].fx_var));

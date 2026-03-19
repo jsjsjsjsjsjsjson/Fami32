@@ -115,7 +115,7 @@ typedef struct __attribute__((packed)) {
     uint8_t d_counte = 0xff;
 } dpcm_t;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     bool enable;
     uint8_t seq_index;
 } seq_index_t;

@@ -12,7 +12,7 @@
 #include <esp_log.h>
 #include <esp_system.h>
 #include <driver/i2s_std.h>
-#include <Adafruit_SSD1306.h>
+#include <gfx_oled_ssd1306.h>
 #include <Adafruit_Keypad.h>
 #include <MPR121_Keypad.h>
 #include <USBMIDI.h>
@@ -33,7 +33,7 @@ extern "C" {
 #include "fonts/font4x6.h"
 
 extern FAMI_PLAYER player;
-extern Adafruit_SSD1306 display;
+extern GfxOledSSD1306 display;
 extern Adafruit_Keypad keypad;
 extern MPR121_Keypad touchKeypad;
 

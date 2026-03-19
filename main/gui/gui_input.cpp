@@ -60,6 +60,14 @@ void keypad_pause() {
     keypad.read();
 }
 
+static const char charTable[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "0123456789"
+    "!@#$%^&*()-_=+[]{};:'\",.<>/?";
+
+#define CHAR_TABLE_SIZE (sizeof(charTable) - 1)
+
 // Display an on-screen keyboard for text input. Allows the user to input a string via the 16-key touchpad.
 void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
     uint8_t cursorTick = 0;
@@ -132,22 +140,28 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
         if (keypad.available()) {
             keypadEvent e = keypad.read();
             if (e.bit.EVENT == KEY_JUST_PRESSED) {
+
                 if (e.bit.KEY == KEY_OCTU) {
-                    // Next set of characters (e.g., from 'A' to 'Q')
                     charOfst += 16;
-                    if (charOfst > 'Z') charOfst = 'A';
-                } else if (e.bit.KEY == KEY_OCTD) {
-                    // Previous set of characters
-                    charOfst -= 16;
-                    if (charOfst < 'A') charOfst = 'A';
-                } else if (e.bit.KEY == KEY_S) {
-                    // Delete (Backspace)
+                    if (charOfst >= CHAR_TABLE_SIZE)
+                        charOfst = 0;
+                }
+
+                else if (e.bit.KEY == KEY_OCTD) {
+                    if (charOfst < 16)
+                        charOfst = CHAR_TABLE_SIZE - (CHAR_TABLE_SIZE % 16);
+                    else
+                        charOfst -= 16;
+                }
+
+                else if (e.bit.KEY == KEY_S) {
                     if (charPos > 0) {
                         charPos--;
                         targetStr[charPos] = '\0';
                     }
-                } else if (e.bit.KEY == KEY_OK) {
-                    // Confirm input
+                }
+
+                else if (e.bit.KEY == KEY_OK) {
                     break;
                 }
             }

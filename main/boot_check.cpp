@@ -51,7 +51,7 @@ const char* get_exc_cause_name(uint32_t exc_cause) {
     }
 }
 
-void show_check_info(Adafruit_SSD1306 *display, Adafruit_Keypad *keypad) {
+void show_check_info(GfxOledSSD1306 *display, Adafruit_Keypad *keypad) {
     display->setFont(&rismol57);
     display->fillRect(0, 0, 128, 9, 1);
     display->setTextColor(0);
