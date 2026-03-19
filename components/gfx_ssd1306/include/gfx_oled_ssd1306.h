@@ -11,8 +11,9 @@ extern "C" {
 
 #include "Adafruit_GFX.h"
 
-#define OLED_COLOR_BLACK 0
-#define OLED_COLOR_WHITE 1
+#define OLED_COLOR_BLACK   0
+#define OLED_COLOR_WHITE   1
+#define OLED_COLOR_INVERT  2
 
 class GfxOledSSD1306 : public Adafruit_GFX {
 public:

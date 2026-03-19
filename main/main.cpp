@@ -7,19 +7,21 @@
 #include "ftm_file.h"
 #include "fami32_player.h"
 #include <dirent.h>
-#include <USBMIDI.h>
+#include "esp_vfs_fat.h"
+#include "esp_partition.h"
 #include "gui/gui_common.h"
 #include "gui/gui_input.h"
-#include "tinyusb.h"
-#include "tusb_msc_storage.h"
 #include "boot_check.h"
 #include "../build/git_version.h"
-
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_io_spi.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
+
+#include "tinyusb_helper.h"
+#include "boot_router.h"
+#include <USBMIDI.h>
 
 bool _debug_print = false;
 bool _midi_output = false;
@@ -157,11 +159,6 @@ esp_lcd_panel_handle_t oled_init(void)
     return panel_handle;
 }
 
-// void set_brigness(uint8_t var) {
-//     display.ssd1306_command(SSD1306_SETCONTRAST);
-//     display.ssd1306_command(var);
-// }
-
 const uint8_t bayerMatrix[4][4] = {
     {  0, 128,  32, 160 },
     { 192,  64, 224,  96 },
@@ -199,7 +196,7 @@ void bayerDitherFade(GfxOledSSD1306 &display, int steps, int factor, bool fadeIn
 void midi_callback(midiEventPacket_t packet) {
     static midiEventData_t e;
     memcpy(&e, &packet, 4);
-    // ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
+    ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
     set_channel_sel_pos(e.ch);
     if (e.event == MIDI_CIN_NOTE_ON) {
         player.channel[channel_sel_pos].set_inst(inst_sel_pos);
@@ -250,66 +247,21 @@ void midi_callback(midiEventPacket_t packet) {
     }
 }
 
-static esp_err_t storage_init_spiflash(wl_handle_t *wl_handle)
-{
-    ESP_LOGI("USB_MSC", "Initializing wear levelling");
-
-    const esp_partition_t *data_partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, NULL);
-    if (data_partition == NULL) {
-        ESP_LOGE("USB_MSC", "Failed to find FATFS partition. Check the partition table.");
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    return wl_mount(data_partition, wl_handle);
-}
-
-// String descriptors
-const char *s_str_desc[5] = {
-    (char[]){0x09, 0x04},  // Supported language
-    "nyakoLab",            // Manufacturer
-    "Fami32",              // Product
-    "000721",              // Serial number
-    "Fami32 Data and MIDI",
-};
-
-#define CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_MSC_DESC_LEN + TUD_MIDI_DESC_LEN)
+#define CONFIG_TOTAL_LEN_MIDI (TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN)
 
 TU_ATTR_ALIGNED(4)
-uint8_t const usb_cfg_desc[] = {
-    // Config number, interface count, string index, total length, attribute, power in mA
-    TUD_CONFIG_DESCRIPTOR(1, 3, 0, CONFIG_TOTAL_LEN, 0x80, 100),
-    // MSC Interface (Interface number 0)
-    TUD_MSC_DESCRIPTOR(0, 4, 0x01, 0x81, 64),
-    // MIDI Interface (Interface numbers 1 & 2)
-    TUD_MIDI_DESCRIPTOR(1, 4, 0x02, 0x82, 64),
+uint8_t const usb_cfg_desc_midi[] = {
+    TUD_CONFIG_DESCRIPTOR(1, 2, 0, CONFIG_TOTAL_LEN_MIDI, 0x80, 100),
+    TUD_MIDI_DESCRIPTOR(0, 4, 0x01, 0x81, 64),
 };
-
-bool init_tinyusb() {
-    // Initialize TinyUSB
-    tinyusb_config_t tusb_cfg = {
-        .device_descriptor = NULL,
-        .string_descriptor = s_str_desc,
-        .string_descriptor_count = sizeof(s_str_desc) / sizeof(s_str_desc[0]),
-        .external_phy = false,
-        .configuration_descriptor = usb_cfg_desc,
-    };
-    esp_err_t ret = tinyusb_driver_install(&tusb_cfg);
-    if (ret != ESP_OK) {
-        ESP_LOGE("USB INIT", "Failed to initialize TinyUSB: %s", esp_err_to_name(ret));
-        return false;
-    }
-    return true;
-}
 
 extern "C" void app_main(void) {
     panel = oled_init();
-    printf("panel = %p\n", panel);
     display.begin(panel);
-
-    if (boot_check()) {
-        show_check_info(&display, &keypad);
-    }
-
+    keypad.begin();
+    if (boot_check()) show_check_info(&display, &keypad);
+    boot_router();
+    
     vTaskDelay(128);
 
     bayerDitherFade(display, 32, 8, true);
@@ -348,25 +300,16 @@ extern "C" void app_main(void) {
     get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
     get_config_value("VOLUME", CONFIG_INT, &g_vol);
 
-    wl_handle_t wl_usbmsc_handle;
-    ESP_ERROR_CHECK(storage_init_spiflash(&wl_usbmsc_handle));
-    const tinyusb_msc_spiflash_config_t config_spi = {
-        .wl_handle = wl_usbmsc_handle,
-        .mount_config = {.max_files = 4}
-    };
-    ESP_ERROR_CHECK(tinyusb_msc_storage_init_spiflash(&config_spi));
-    init_tinyusb();
+    init_tinyusb(usb_cfg_desc_midi, sizeof(usb_cfg_desc_midi));
     MIDI.begin();
 
     display.setCursor(0, 59);
     display.printf("Press any key to continue...");
     display.display();
 
-    keypad.begin();
-
     while (!keypad.available()) {
         keypad.tick();
-        vTaskDelay(32);
+        vTaskDelay(1);
     }
     keypad.read();
 

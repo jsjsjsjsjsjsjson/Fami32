@@ -2,8 +2,7 @@
 #define _USBMIDI_H_INCLUDED
 
 #include "esp_err.h"
-#include "tusb.h"
-#include "class/midi/midi_device.h"
+#include "tinyusb.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,9 +21,9 @@ typedef struct {
 
 typedef struct PACKED_ATTR {
     uint8_t cn : 4;
-    midi_code_index_number_t cin : 4;
+    uint8_t cin : 4;
     uint8_t ch : 4;
-    midi_code_index_number_t event : 4;
+    uint8_t event : 4;
     uint8_t note;
     uint8_t vol;
 } midiEventData_t;

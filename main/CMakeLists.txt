@@ -1,4 +1,5 @@
 idf_component_register(SRCS "main.cpp" "dpcm.c" "ftm_file.cpp" "micro_config.c" "boot_check.cpp" "note2freq.c" "src_config.c" "wave_table.c" "gen_env.cpp"
+                            "usb_msc_mode.cpp" "uac_mode.cpp" "tinyusb_helper.cpp" "boot_router.cpp"
                             "gui/gui_common.cpp"
                             "gui/gui_channel.cpp"
                             "gui/gui_file.cpp"
@@ -20,7 +21,7 @@ idf_component_register(SRCS "main.cpp" "dpcm.c" "ftm_file.cpp" "micro_config.c" 
 
                     PRIV_REQUIRES spi_flash
                     INCLUDE_DIRS "include" "include/gui" "include/fami32core"
-                    REQUIRES gfx_ssd1306 Adafruit_Keypad Adafruit_MPR121 arduino-esp32-lite bt nvs_flash USBMIDI espcoredump)
+                    REQUIRES gfx_ssd1306 Adafruit_Keypad Adafruit_MPR121 arduino-esp32-lite bt nvs_flash USBMIDI espcoredump esp_tinyusb)
 
 if(GIT_FOUND)
     execute_process(

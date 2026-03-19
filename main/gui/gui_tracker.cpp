@@ -5,6 +5,8 @@
 #include "gui_file.h"      // for menu_file()
 #include "gui_settings.h"  // for settings_page()
 
+#include "boot_router.h"
+
 // Copy pattern data from startRow (inclusive) to endRow (exclusive) for a given channel into clipboard_data
 void copy_data(int startRow, int endRow, int channel) {
     if (endRow <= startRow) return;
@@ -236,7 +238,7 @@ void main_option_page() {
     drawChessboard(0, 0, 128, 64);
     const char *menu_str[10] = {edit_mode ? "STOP EDIT" : "START EDIT", 
                                 player.get_mute(channel_sel_pos) ? "UNMUTE" : "MUTE",
-                                "INSTRUMENT", "CLIPBOARD", "CHANNEL", "FILE", "SETTINGS", "VOLUME", "TEST KEYBOARD", "REBOOT"};
+                                "INSTRUMENT", "CLIPBOARD", "CHANNEL", "FILE", "SETTINGS", "VOLUME", "USB MSC MODE", "REBOOT"};
     int ret = menu("OPTION", menu_str, 10, NULL, 64, 45, 0, 0, 0);
     switch (ret)
     {
@@ -265,7 +267,9 @@ void main_option_page() {
         vol_set_page();
         break;
     case 8:
-        test_displayKeyboard();
+        drawPopupBox("REBOOTING...");
+        display.display();
+        boot_router_set_mode(USB_MSC);
         break;
     case 9:
         reboot_page();

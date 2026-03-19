@@ -51,7 +51,27 @@ inline void GfxOledSSD1306::setPixelRaw(int16_t x, int16_t y, bool on) {
 }
 
 void GfxOledSSD1306::drawPixel(int16_t x, int16_t y, uint16_t color) {
-    setPixelRaw(x, y, color != 0);
+    if (x < 0 || x >= width() || y < 0 || y >= height()) return;
+
+    size_t index = x + (y / 8) * WIDTH;
+    uint8_t mask = 1 << (y & 7);
+
+    switch (color) {
+        case 0: // clear
+            buffer_[index] &= ~mask;
+            break;
+
+        case 1: // set
+            buffer_[index] |= mask;
+            break;
+
+        case 2: // invert
+            buffer_[index] ^= mask;
+            break;
+
+        default:
+            break;
+    }
 }
 
 uint16_t GfxOledSSD1306::getPixel(int16_t x, int16_t y)
@@ -90,9 +110,13 @@ void GfxOledSSD1306::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t col
 
     if (color == OLED_COLOR_WHITE) {
         while (w--) *p++ |= mask;
-    } else {
+    } 
+    else if (color == OLED_COLOR_BLACK) {
         mask = ~mask;
         while (w--) *p++ &= mask;
+    } 
+    else { // XOR
+        while (w--) *p++ ^= mask;
     }
 }
 
@@ -114,7 +138,7 @@ void GfxOledSSD1306::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t col
     uint8_t *p = &buffer_[(y >> 3) * WIDTH + x];
     uint8_t mod = y & 7;
 
-    // --- partial head ---
+    // --- head ---
     if (mod) {
         uint8_t bits = 8 - mod;
 
@@ -130,7 +154,8 @@ void GfxOledSSD1306::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t col
         }
 
         if (color == OLED_COLOR_WHITE) *p |= mask;
-        else *p &= ~mask;
+        else if (color == OLED_COLOR_BLACK) *p &= ~mask;
+        else *p ^= mask;
 
         p += WIDTH;
         h -= bits;
@@ -138,13 +163,22 @@ void GfxOledSSD1306::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t col
 
     // --- full bytes ---
     if (h >= 8) {
-        uint8_t val = (color == OLED_COLOR_WHITE) ? 0xFF : 0x00;
+        if (color == OLED_COLOR_WHITE || color == OLED_COLOR_BLACK) {
+            uint8_t val = (color == OLED_COLOR_WHITE) ? 0xFF : 0x00;
 
-        do {
-            *p = val;
-            p += WIDTH;
-            h -= 8;
-        } while (h >= 8);
+            do {
+                *p = val;
+                p += WIDTH;
+                h -= 8;
+            } while (h >= 8);
+        } else {
+            // XOR
+            do {
+                *p ^= 0xFF;
+                p += WIDTH;
+                h -= 8;
+            } while (h >= 8);
+        }
     }
 
     // --- tail ---
@@ -157,7 +191,8 @@ void GfxOledSSD1306::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t col
         uint8_t mask = postmask[h];
 
         if (color == OLED_COLOR_WHITE) *p |= mask;
-        else *p &= ~mask;
+        else if (color == OLED_COLOR_BLACK) *p &= ~mask;
+        else *p ^= mask;
     }
 }
 
@@ -165,7 +200,6 @@ void GfxOledSSD1306::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16
 {
     if (w <= 0 || h <= 0) return;
 
-    // clip
     if (x < 0) {
         w += x;
         x = 0;
@@ -207,7 +241,8 @@ void GfxOledSSD1306::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16
             }
 
             if (color == OLED_COLOR_WHITE) *p |= mask;
-            else *p &= ~mask;
+            else if (color == OLED_COLOR_BLACK) *p &= ~mask;
+            else *p ^= mask;
 
             p += WIDTH;
             remaining -= bits;
@@ -215,7 +250,12 @@ void GfxOledSSD1306::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16
 
         // --- full bytes ---
         while (remaining >= 8) {
-            *p = fill_byte;
+            if (color == OLED_COLOR_WHITE || color == OLED_COLOR_BLACK) {
+                *p = fill_byte;
+            } else {
+                *p ^= 0xFF;
+            }
+
             p += WIDTH;
             remaining -= 8;
         }
@@ -230,7 +270,8 @@ void GfxOledSSD1306::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16
             uint8_t mask = postmask[remaining];
 
             if (color == OLED_COLOR_WHITE) *p |= mask;
-            else *p &= ~mask;
+            else if (color == OLED_COLOR_BLACK) *p &= ~mask;
+            else *p ^= mask;
         }
     }
 }

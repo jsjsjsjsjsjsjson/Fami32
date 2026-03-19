@@ -90,16 +90,20 @@ bool USBMIDI::isConnected() {
 
 // Task for reading MIDI data
 void USBMIDI::midiReadTask(void *arg) {
-    USBMIDI *midi = (USBMIDI *)arg;
+    USBMIDI *midi = static_cast<USBMIDI *>(arg);
     midiEventPacket_t packet;
 
     for (;;) {
-        while (midi->readPacket(&packet)) {
-            ESP_LOGI(TAG, "MIDI Packet Received: %02X %02X %02X %02X", packet.header, packet.byte1, packet.byte2, packet.byte3);
-            if (midi->callback) {
-                midi->callback(packet);
+        vTaskDelay(pdMS_TO_TICKS(1));
+
+        while (tud_midi_available()) {
+            if (midi->readPacket(&packet)) {
+                ESP_LOGI(TAG, "MIDI Packet Received: %02X %02X %02X %02X",
+                         packet.header, packet.byte1, packet.byte2, packet.byte3);
+                if (midi->callback) {
+                    midi->callback(packet);
+                }
             }
         }
-        vTaskDelay(1);
     }
 }
