@@ -63,43 +63,49 @@ void FAMI_INSTRUMENT::cut() {
 
 void FAMI_INSTRUMENT::update_tick() {
     for (int i = 0; i < 5; i++) {
-        if (status[i] || (status[VOL_SEQU] == SEQU_RELEASE)) {
-            sequences_t *sequ = ftm_data->get_sequ(i, instrument->seq_index[i].seq_index);
-            if (sequ == NULL) {
+        if (status[i] != SEQU_PLAYING && status[i] != SEQU_RELEASE) {
+            continue;
+        }
+
+        sequences_t *sequ = ftm_data->get_sequ(i, instrument->seq_index[i].seq_index);
+        if (sequ == NULL || sequ->length <= 0) {
+            continue;
+        }
+
+        pos[i]++;
+
+        if (status[i] == SEQU_PLAYING) {
+            if (sequ->release != SEQ_FEAT_DISABLE) {
+                if (sequ->loop == SEQ_FEAT_DISABLE) {
+                    if (pos[i] > sequ->release) {
+                        pos[i] = sequ->release;
+                    }
+                } else {
+                    if (pos[i] > sequ->release) {
+                        pos[i] = sequ->loop;
+                    }
+                }
+            }
+        } else if (status[i] == SEQU_RELEASE) {
+            if (sequ->release == SEQ_FEAT_DISABLE) {
+                status[i] = SEQU_STOP;
+                if (i == VOL_SEQU) {
+                    var[i] = 0;
+                }
                 continue;
             }
-            pos[i]++;
-            if (status[i] == SEQU_PLAYING) {
-                if (sequ->release != SEQ_FEAT_DISABLE) {
-                    if (sequ->loop == SEQ_FEAT_DISABLE) {
-                        if (pos[i] > sequ->release) {
-                            pos[i]--;
-                        }
-                    } else {
-                        if (pos[i] > sequ->loop) {
-                            pos[i] = sequ->release;
-                        }
-                    }
-                }
-            } else if (status[i] == SEQU_RELEASE) {
-                if (sequ->release == SEQ_FEAT_DISABLE) {
-                    status[i] = SEQU_STOP;
-                    if (i == 0) {
-                        var[0] = 0;
-                        continue;
-                    }
-                }
-            }
-            if (pos[i] >= sequ->length) {
-                pos[i]--;
-                if (sequ->loop == SEQ_FEAT_DISABLE) {
-                    status[i] = SEQU_STOP;
-                } else {
-                    pos[i] = sequ->loop;
-                }
-            }
-            var[i] = sequ->data[pos[i]];
         }
+
+        if (pos[i] >= sequ->length) {
+            if (sequ->loop == SEQ_FEAT_DISABLE) {
+                pos[i] = sequ->length - 1;
+                status[i] = SEQU_STOP;
+            } else {
+                pos[i] = sequ->loop;
+            }
+        }
+
+        var[i] = sequ->data[pos[i]];
     }
 }
 

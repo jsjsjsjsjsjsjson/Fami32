@@ -73,6 +73,7 @@ void instrument_menu() {
     }
     static int pageStart = 0;
     const int itemsPerPage = 6;
+
     for (;;) {
         display.clearDisplay();
 

@@ -34,7 +34,7 @@ extern "C" {
 }
 
 FAMI_PLAYER player;
-i2s_chan_handle_t tx_handle;
+i2s_chan_handle_t i2s_tx_handle;
 TaskHandle_t SOUND_TASK_HD = NULL;
 TaskHandle_t GUI_TASK = NULL;
 USBMIDI MIDI;
@@ -50,7 +50,7 @@ void sound_task(void *arg) {
     player.init(&ftm);
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
-    i2s_new_channel(&chan_cfg, &tx_handle, NULL);
+    i2s_new_channel(&chan_cfg, &i2s_tx_handle, NULL);
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG((uint32_t)SAMP_RATE),
         .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
@@ -68,17 +68,17 @@ void sound_task(void *arg) {
         },
     };
 
-    i2s_channel_init_std_mode(tx_handle, &std_cfg);
-    i2s_channel_enable(tx_handle);
-
-    // Serial.begin(921600);
+    i2s_channel_init_std_mode(i2s_tx_handle, &std_cfg);
+    i2s_channel_enable(i2s_tx_handle);
 
     size_t written;
 
     for (;;) {
         player.process_tick();
-        i2s_channel_write(tx_handle, player.get_buf(), player.get_buf_size_byte(), &written, portMAX_DELAY);
-        // serial_audio(player.get_buf(), player.get_buf_size());
+        for (int i = 0; i < player.get_buf_size(); i++) {
+            player.get_buf()[i] = (player.get_buf()[i] * g_vol) >> 5;
+        }
+        i2s_channel_write(i2s_tx_handle, player.get_buf(), player.get_buf_size_byte(), &written, portMAX_DELAY);
     }
 }
 
@@ -260,6 +260,8 @@ extern "C" void app_main(void) {
     display.begin(panel);
     keypad.begin();
     if (boot_check()) show_check_info(&display, &keypad);
+    keypad.tick();
+    if (keypad.isPressed(KEY_BACK)) boot_router_set_mode(USB_MSC);
     boot_router();
     
     vTaskDelay(128);
@@ -268,7 +270,7 @@ extern "C" void app_main(void) {
 
     esp_vfs_fat_mount_config_t fat_conf = {
         .format_if_mount_failed = true,
-        .max_files = 2
+        .max_files = 4
     };
     wl_handle_t wl_flash_handle;
     esp_err_t ret = esp_vfs_fat_spiflash_mount_rw_wl("/flash", "flash", &fat_conf, &wl_flash_handle);
@@ -313,8 +315,8 @@ extern "C" void app_main(void) {
     }
     keypad.read();
 
-    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 20, &SOUND_TASK_HD, 1);
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 1);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, NULL, 0);
 
     MIDI.setCallback(midi_callback);
 
@@ -323,5 +325,5 @@ extern "C" void app_main(void) {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 4, &GUI_TASK, 0);
+    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 5, &GUI_TASK, 0);
 }

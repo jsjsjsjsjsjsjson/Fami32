@@ -1,6 +1,6 @@
 {
     "C_Cpp.intelliSenseEngine": "default",
-    "idf.espIdfPath": "/home/libchara/esp/v5.4.3/esp-idf",
+    "idf.espIdfPath": "/home/libchara/esp/v5.5.2/esp-idf",
     "idf.toolsPath": "/home/libchara/.espressif",
     "idf.pythonInstallPath": "/usr/bin/python3",
     "idf.customExtraVars": {
@@ -107,5 +107,6 @@
         "git_version.h": "c",
         "*.in": "c"
     },
-    "C_Cpp.errorSquiggles": "enabled"
+    "C_Cpp.errorSquiggles": "enabled",
+    "idf.currentSetup": "/home/libchara/.espressif/v5.4.3/esp-idf"
 }

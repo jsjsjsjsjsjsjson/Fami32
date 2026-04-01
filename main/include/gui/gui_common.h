@@ -37,7 +37,7 @@ extern GfxOledSSD1306 display;
 extern Adafruit_Keypad keypad;
 extern MPR121_Keypad touchKeypad;
 
-extern i2s_chan_handle_t tx_handle;
+extern i2s_chan_handle_t i2s_tx_handle;
 
 // Global GUI state variables (extern definitions, actual instances in gui_common.cpp)
 extern uint8_t main_menu_pos;

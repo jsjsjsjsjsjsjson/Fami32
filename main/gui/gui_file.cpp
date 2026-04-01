@@ -289,6 +289,59 @@ void open_file_page() {
     player.reload(); // Reload player with new file data
 }
 
+#include "wav.hpp"
+
+extern TaskHandle_t SOUND_TASK_HD;
+extern i2s_chan_handle_t i2s_tx_handle;
+
+void ftm_record_to_audio() {
+    player.stop_play();
+    vTaskSuspend(SOUND_TASK_HD);
+
+    char current_name[256];
+    char target_path[256];
+
+    strcpy(current_name, basename(ftm.current_file));
+    if (strlen(current_name) > 4) {
+        current_name[strlen(current_name) - 4] = '\0'; // remove extension
+    }
+    displayKeyboard("RECORD TO...", current_name, 255);
+    ESP_LOGI("RECORDER", "filename: %s", current_name);
+    drawPopupBox("RECORDING...");
+    display.display();
+    display.setFont(&rismol57);
+    snprintf(target_path, sizeof(target_path), "/flash/%s.wav", current_name);
+
+    WavWriter wr;
+    WavWriter::Result r = wr.init(target_path, 1, SAMP_RATE, 16);
+
+    player.reload();
+    player.set_row(0);
+    player.jmp_to_frame(0);
+    player.start_play();
+    uint32_t total_sample = 0;
+    while (player.get_play_status()) {
+        player.process_tick();
+        wr.write_frame(player.get_buf(), player.get_buf_size());
+        total_sample += player.get_buf_size();
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.printf("RECORDING...\n");
+        display.printf("(%02X/%02lX>%02X)\n", player.get_row(), ftm.fr_block.pat_length, player.get_frame());
+        display.printf("%ld\nsamples\n%.02fs\nhave been written.", total_sample, (float)total_sample / (float)SAMP_RATE);
+        display.display();
+        if (total_sample > (SAMP_RATE * 35)) {
+            wr.close();
+            break;
+        }
+        vTaskDelay(1);
+    }
+
+    player.stop_play();
+    vTaskResume(SOUND_TASK_HD);
+    display.setFont(&rismol35);
+}
+
 // File menu: provides options to create new, open existing, save, save as, and record (if implemented)
 void menu_file() {
     static const char *file_menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "RECORD"};
@@ -337,7 +390,9 @@ void menu_file() {
             display.display();
             ftm.save_as_ftm(target_path);
             break;
-        case 4:  // RECORD (if implemented)
+        case 4:
+            ftm_record_to_audio();
+            break;
         default:
             break;
     }
