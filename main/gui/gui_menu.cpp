@@ -1,5 +1,5 @@
 #include "gui_menu.h"
-#include "gui_input.h"  // for update_touchpad_note()
+#include "gui_input.h"  // for note I/O helpers
 
 // Invert the pixels in a rectangle (useful for highlighting selection)
 void invertRect(int x, int y, int w, int h) {
@@ -156,9 +156,9 @@ int menu(const char* name, const char* menuStr[], uint8_t maxMenuPos, void (*men
             }
         }
 
-        if (touchKeypad.available()) {
-            touchKeypadEvent e = touchKeypad.read();
-            update_touchpad_note(NULL, NULL, e);
+        touch_input_event_t touch_event;
+        if (touch_input_pop_event(&touch_event)) {
+            process_note_io_event(note_io_event_from_input(touch_event));
         }
 
         vTaskDelay(4);

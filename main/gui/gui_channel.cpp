@@ -180,12 +180,17 @@ void channel_menu() {
         uint8_t note_set = 0;
         uint8_t octv_set = 0;
         uint8_t vol_set = NO_VOL;
+        touch_input_event_t touch_event;
+        bool has_touch_event = touch_input_pop_event(&touch_event);
 
         if (edit_mode) {
             if (x_pos == 0) {
-                if (touchKeypad.available()) {
-                    touchKeypadEvent e = touchKeypad.read();
-                    update_touchpad_note(&note_set, &octv_set, e);
+                if (has_touch_event) {
+                    note_io_result_t note_result = process_note_io_event(note_io_event_from_input(touch_event));
+                    if (note_result.has_note) {
+                        note_set = note_result.note;
+                        octv_set = note_result.octave;
+                    }
                 }
                 if (note_set) {
                     DBG_PRINTF("INPUT_NOTE_SET: %d\n", note_set);
@@ -205,31 +210,33 @@ void channel_menu() {
                         player.set_row(player.get_row() + 1);
                     }
                 }
-            } else if (touchKeypad.available()) {
-                touchKeypadEvent e = touchKeypad.read();
-                if (e.bit.EVENT == KEY_JUST_PRESSED) {
+            } else if (has_touch_event) {
+                if (touch_event.event == KEY_JUST_PRESSED) {
                     unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                     if (x_pos == 1) {
-                        pt_tmp.instrument = SET_HEX_B1(pt_tmp.instrument, e.bit.KEY);
+                        pt_tmp.instrument = SET_HEX_B1(pt_tmp.instrument, touch_event.key);
                     } else if (x_pos == 2) {
-                        pt_tmp.instrument = SET_HEX_B2(pt_tmp.instrument, e.bit.KEY);
+                        pt_tmp.instrument = SET_HEX_B2(pt_tmp.instrument, touch_event.key);
                     } else if (x_pos == 3) {
-                        pt_tmp.volume = e.bit.KEY;
+                        pt_tmp.volume = touch_event.key;
                     } else if (x_pos >= 4) {
                         if (((x_pos - 4) % 3) == 1)
-                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B1(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, e.bit.KEY);
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B1(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, touch_event.key);
                         else if (((x_pos - 4) % 3) == 2)
-                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B2(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, e.bit.KEY);
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_var = SET_HEX_B2(pt_tmp.fxdata[(x_pos - 4) / 3].fx_var, touch_event.key);
                         else
-                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = fast_fx_table[e.bit.KEY];
+                            pt_tmp.fxdata[(x_pos - 4) / 3].fx_cmd = fast_fx_table[touch_event.key];
                     }
                     ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
                 }
             }
         } else {
-            if (touchKeypad.available()) {
-                touchKeypadEvent e = touchKeypad.read();
-                update_touchpad_note(&note_set, &octv_set, e);
+            if (has_touch_event) {
+                note_io_result_t note_result = process_note_io_event(note_io_event_from_input(touch_event));
+                if (note_result.has_note) {
+                    note_set = note_result.note;
+                    octv_set = note_result.octave;
+                }
             }
         }
 

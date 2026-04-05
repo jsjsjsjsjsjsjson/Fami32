@@ -35,7 +35,6 @@ extern "C" {
 extern FAMI_PLAYER player;
 extern GfxOledSSD1306 display;
 extern Adafruit_Keypad keypad;
-extern MPR121_Keypad touchKeypad;
 
 extern i2s_chan_handle_t i2s_tx_handle;
 
