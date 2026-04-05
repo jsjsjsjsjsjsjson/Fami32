@@ -98,9 +98,9 @@ void osc_menu() {
             }
         }
 
-        if (touchKeypad.available()) {
-            touchKeypadEvent e = touchKeypad.read();
-            update_touchpad_note(NULL, NULL, e);
+        touch_input_event_t touch_event;
+        if (touch_input_pop_event(&touch_event)) {
+            process_note_io_event(note_io_event_from_input(touch_event));
         }
 
         vTaskDelay(4);
@@ -234,9 +234,9 @@ void visual_menu() {
             }
         }
 
-        if (touchKeypad.available()) {
-            touchKeypadEvent e = touchKeypad.read();
-            update_touchpad_note(nullptr, nullptr, e);
+        touch_input_event_t touch_event;
+        if (touch_input_pop_event(&touch_event)) {
+            process_note_io_event(note_io_event_from_input(touch_event));
         }
         vTaskDelay(3);
     }

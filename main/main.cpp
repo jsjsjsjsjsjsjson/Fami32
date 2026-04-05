@@ -12,6 +12,7 @@
 #include "gui/gui_common.h"
 #include "gui/gui_input.h"
 #include "boot_check.h"
+#include "touch_input.h"
 #include "../build/git_version.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
@@ -87,6 +88,10 @@ void keypad_task(void *arg) {
     for (;;) {
         keypad.tick();
         touchKeypad.tick();
+        while (touchKeypad.available()) {
+            touchKeypadEvent e = touchKeypad.read();
+            touch_input_push_event(e.bit.KEY, e.bit.EVENT);
+        }
         vTaskDelay(1);
     }
 }
@@ -316,6 +321,7 @@ extern "C" void app_main(void) {
     keypad.read();
 
     xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 1);
+    touch_input_init();
     xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, NULL, 0);
 
     MIDI.setCallback(midi_callback);

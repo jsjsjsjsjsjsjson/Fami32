@@ -148,14 +148,16 @@ void tracker_menu() {
         }
         display.display();
 
-        if (touchKeypad.available()) {
+        touch_input_event_t touch_event;
+        if (touch_input_pop_event(&touch_event)) {
             uint8_t note_set = 0;
             uint8_t octv_set = 0;
             uint8_t vol_set = NO_VOL;
 
-            if (touchKeypad.available()) {
-                touchKeypadEvent e = touchKeypad.read();
-                update_touchpad_note(&note_set, &octv_set, e);
+            note_io_result_t note_result = process_note_io_event(note_io_event_from_input(touch_event));
+            if (note_result.has_note) {
+                note_set = note_result.note;
+                octv_set = note_result.octave;
             }
 
             if (note_set) {

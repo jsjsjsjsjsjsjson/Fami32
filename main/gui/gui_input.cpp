@@ -1,30 +1,15 @@
 #include "gui_input.h"
 
-void update_touchpad_note(uint8_t *note, uint8_t *octv, touchKeypadEvent e) {
-    if (e.bit.EVENT == KEY_JUST_PRESSED) {
-        if (e.bit.KEY > 13) {
-            if (note != NULL) *note = e.bit.KEY - 1;
-            if (octv != NULL) *octv = 0;
-        } else {
-            if (note != NULL) *note = (e.bit.KEY % 12) + 1;
-            if (octv != NULL) *octv = g_octv + (e.bit.KEY / 12);
-            if (touch_note) {
-                player.channel[channel_sel_pos].set_inst(inst_sel_pos);
-                player.channel[channel_sel_pos].set_note(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)));
-                player.channel[channel_sel_pos].note_start();
-            }
-            if (_midi_output) {
-                MIDI.noteOn(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)), 120, channel_sel_pos);
-            }
-        }
-    } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
-        if (touch_note) {
-            player.channel[channel_sel_pos].note_end();
-            if (_midi_output) {
-                MIDI.noteOff(item2note((e.bit.KEY % 12) + 1, g_octv + (e.bit.KEY / 12)), 120, channel_sel_pos);
-            }
-        }
+note_io_event_t note_io_event_from_input(const touch_input_event_t &e) {
+    note_io_event_t event;
+    event.key = e.key;
+    event.action = NOTE_IO_ACTION_NONE;
+    if (e.event == KEY_JUST_PRESSED) {
+        event.action = NOTE_IO_ACTION_PRESS;
+    } else if (e.event == KEY_JUST_RELEASED) {
+        event.action = NOTE_IO_ACTION_RELEASE;
     }
+    return event;
 }
 
 // Change selected channel (wrap around 0-4 for 5 channels total)
@@ -167,19 +152,19 @@ void displayKeyboard(const char *title, char *targetStr, uint8_t maxLen) {
             }
         }
         // Handle touchpad events for letter input
-        if (touchKeypad.available()) {
-            touchKeypadEvent e = touchKeypad.read();
-            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+        touch_input_event_t touch_event;
+        if (touch_input_pop_event(&touch_event)) {
+            if (touch_event.event == KEY_JUST_PRESSED) {
                 // Append character corresponding to touched key
-                targetStr[charPos] = e.bit.KEY + charOfst;
+                targetStr[charPos] = touch_event.key + charOfst;
                 charPos++;
                 if (charPos > maxLen) {
                     charPos--;  // prevent overflow
                 }
                 targetStr[charPos] = '\0';
-                keyboardStat[e.bit.KEY] = true;
-            } else if (e.bit.EVENT == KEY_JUST_RELEASED) {
-                keyboardStat[e.bit.KEY] = false;
+                keyboardStat[touch_event.key] = true;
+            } else if (touch_event.event == KEY_JUST_RELEASED) {
+                keyboardStat[touch_event.key] = false;
             }
         }
         vTaskDelay(4);
