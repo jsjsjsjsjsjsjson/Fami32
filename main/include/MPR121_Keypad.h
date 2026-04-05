@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <Adafruit_Keypad.h>
+#include "keypad_io.h"
 
 #define BUFFER_SIZE 16
 
