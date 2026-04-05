@@ -1,5 +1,4 @@
-#include <Arduino.h>
-#include <Adafruit_Keypad.h>
+#include "keypad_io.h"
 #include <MPR121_Keypad.h>
 #include <gfx_oled_ssd1306.h>
 #include <driver/i2s_std.h>
@@ -41,10 +40,13 @@ TaskHandle_t GUI_TASK = NULL;
 USBMIDI MIDI;
 esp_lcd_panel_handle_t panel;
 GfxOledSSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
-Adafruit_Keypad keypad = Adafruit_Keypad(makeKeymap(KEYPAD_MAP),
-                                        (uint8_t[KEYPAD_ROWS]){KEYPAD_R0, KEYPAD_R1, KEYPAD_R2, KEYPAD_R3},
-                                        (uint8_t[KEYPAD_COLS]){KEYPAD_C0, KEYPAD_C1, KEYPAD_C2},
-                                        KEYPAD_ROWS, KEYPAD_COLS);
+static const uint8_t kKeypadRows[KEYPAD_ROWS] = {KEYPAD_R0, KEYPAD_R1, KEYPAD_R2, KEYPAD_R3};
+static const uint8_t kKeypadCols[KEYPAD_COLS] = {KEYPAD_C0, KEYPAD_C1, KEYPAD_C2};
+KeypadIO keypad(reinterpret_cast<const uint8_t *>(KEYPAD_MAP),
+                kKeypadRows,
+                kKeypadCols,
+                KEYPAD_ROWS,
+                KEYPAD_COLS);
 MPR121_Keypad touchKeypad(TOUCHPAD0_ADDRS, TOUCHPAD1_ADDRS);
 
 void sound_task(void *arg) {

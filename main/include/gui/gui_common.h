@@ -13,7 +13,7 @@
 #include <esp_system.h>
 #include <driver/i2s_std.h>
 #include <gfx_oled_ssd1306.h>
-#include <Adafruit_Keypad.h>
+#include "keypad_io.h"
 #include <MPR121_Keypad.h>
 #include <USBMIDI.h>
 #include "ringbuf.h"
@@ -34,7 +34,7 @@ extern "C" {
 
 extern FAMI_PLAYER player;
 extern GfxOledSSD1306 display;
-extern Adafruit_Keypad keypad;
+extern KeypadIO keypad;
 
 extern i2s_chan_handle_t i2s_tx_handle;
 

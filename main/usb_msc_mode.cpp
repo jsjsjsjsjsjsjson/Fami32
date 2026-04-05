@@ -1,6 +1,6 @@
 #include "usb_msc_mode.h"
 #include <gfx_oled_ssd1306.h>
-#include <Adafruit_Keypad.h>
+#include "keypad_io.h"
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "esp_system.h"
@@ -40,7 +40,7 @@ static esp_err_t storage_init_spiflash(wl_handle_t *wl_handle) {
     return wl_mount(data_partition, wl_handle);
 }
 
-extern Adafruit_Keypad keypad;
+extern KeypadIO keypad;
 
 void msc_mode(void) {
     wl_handle_t wl_usbmsc_handle;
