@@ -3,6 +3,62 @@
 extern int errno;
 extern bool _debug_print;
 
+namespace {
+
+constexpr uint32_t FTM_SEQUENCE_TYPES = 5;
+constexpr uint32_t FTM_DPCM_NOTES = 96;
+constexpr uint32_t FTM_MAX_DPCM_SAMPLE_SIZE = 0x0FF1;
+
+size_t bounded_strlen(const char *str, size_t max_len) {
+    size_t len = 0;
+    while (len < max_len && str[len] != '\0') {
+        ++len;
+    }
+    return len;
+}
+
+void write_u8(FILE *file, uint8_t value) {
+    fwrite(&value, sizeof(value), 1, file);
+}
+
+void write_u32(FILE *file, uint32_t value) {
+    fwrite(&value, sizeof(value), 1, file);
+}
+
+bool read_u8(FILE *file, uint8_t *value) {
+    return fread(value, sizeof(*value), 1, file) == 1;
+}
+
+bool read_u32(FILE *file, uint32_t *value) {
+    return fread(value, sizeof(*value), 1, file) == 1;
+}
+
+bool is_valid_instrument_slot(const std::vector<instrument_t> &instruments, size_t index) {
+    return index < instruments.size() && instruments[index].index == index;
+}
+
+uint32_t instrument_name_length(instrument_t &inst) {
+    inst.name_len = static_cast<uint32_t>(bounded_strlen(inst.name, sizeof(inst.name)));
+    return inst.name_len;
+}
+
+uint8_t make_dpcm_pitch_byte(const dpcm_t &assignment) {
+    return static_cast<uint8_t>((assignment.pitch & 0x0F) | (assignment.loop ? 0x80 : 0x00));
+}
+
+uint32_t normalized_dpcm_size(uint32_t size) {
+    if (size == 0) {
+        return 0;
+    }
+    uint32_t padded = size + ((1U - size) & 0x0FU);
+    if (padded > FTM_MAX_DPCM_SAMPLE_SIZE) {
+        return FTM_MAX_DPCM_SAMPLE_SIZE;
+    }
+    return padded;
+}
+
+} // namespace
+
 FTM_FILE::FTM_FILE() {
     new_ftm();
 }
@@ -110,18 +166,18 @@ int FTM_FILE::open_ftm(const char *filename) {
     if (strncmp(header.id, "FamiTracker Module", 18)) {
         DBG_PRINTF("HEADER: %.16s\n", header.id);
         DBG_PRINTF("This is not a valid FTM file!\n");
-        memset(&header, 0, sizeof(header));
+        header = FTM_HEADER();
         fclose(ftm_file);
         return FTM_NOT_VALID;
     };
     if (header.version != 0x0440) {
-        DBG_PRINTF("Only FTM file version 0x0440 is supported\nVERSION: 0x%X\n", header.version);
-        memset(&header, 0, sizeof(header));
+        DBG_PRINTF("Only FTM file version 0x0440 is supported\nVERSION: 0x%lX\n", (unsigned long)header.version);
+        header = FTM_HEADER();
         fclose(ftm_file);
         return NO_SUPPORT_VERSION;
     }
     DBG_PRINTF("\nOpen %.18s\n", header.id);
-    DBG_PRINTF("VERSION: 0x%X\n", header.version);
+    DBG_PRINTF("VERSION: 0x%lX\n", (unsigned long)header.version);
     strcpy(current_file, filename);
     return 0;
 }
@@ -216,7 +272,13 @@ void FTM_FILE::write_info_block() {
 int FTM_FILE::read_header_block() {
     fread(&he_block, 1, 25, ftm_file);
 
-    fread(&he_block.name, 1, he_block.size - (pr_block.channel * 2) - 1, ftm_file);
+    uint32_t name_bytes = he_block.size - (pr_block.channel * 2) - 1;
+    uint32_t copy_bytes = name_bytes < sizeof(he_block.name) - 1 ? name_bytes : sizeof(he_block.name) - 1;
+    memset(he_block.name, 0, sizeof(he_block.name));
+    fread(he_block.name, 1, copy_bytes, ftm_file);
+    if (name_bytes > copy_bytes) {
+        fseek(ftm_file, name_bytes - copy_bytes, SEEK_CUR);
+    }
     if (he_block.track_num > 0) {
         DBG_PRINTF("Multi-track FTM files are not supported\n");
         return NO_SUPPORT_MULTITRACK;
@@ -241,10 +303,10 @@ int FTM_FILE::read_header_block() {
 }
 
 void FTM_FILE::write_header_block() {
-    he_block.size = 20;
+    size_t name_len = bounded_strlen(he_block.name, sizeof(he_block.name) - 1);
+    he_block.size = static_cast<uint32_t>(1 + name_len + 1 + (pr_block.channel * 2));
     fwrite(&he_block, 1, 25, ftm_file);
-    strcpy(he_block.name, "_FAMI32_");
-    fwrite(he_block.name, 1, 9, ftm_file);
+    fwrite(he_block.name, 1, name_len + 1, ftm_file);
 
     for (int i = 0; i < pr_block.channel; i++) {
         fwrite(&he_block.ch_id[i], 1, 1, ftm_file);
@@ -261,12 +323,17 @@ void FTM_FILE::read_instrument_block() {
 }
 
 void FTM_FILE::write_instrument_block() {
+    uint32_t valid_count = 0;
     size_t tol_size = 4;
-    for (int i = 0; i < inst_block.inst_num; i++) {
-        tol_size += 311 + instrument[i].name_len;
+    for (size_t i = 0; i < instrument.size(); i++) {
+        if (!is_valid_instrument_slot(instrument, i)) {
+            continue;
+        }
+        valid_count++;
+        tol_size += 311 + instrument_name_length(instrument[i]);
     }
-    printf("WRITE SIZE=%d\n", tol_size);
-    inst_block.size = tol_size;
+    inst_block.inst_num = valid_count;
+    inst_block.size = static_cast<uint32_t>(tol_size);
     fwrite(&inst_block, sizeof(inst_block), 1, ftm_file);
 }
 
@@ -276,9 +343,42 @@ void FTM_FILE::read_instrument_data() {
     for (int i = 0; i < inst_block.inst_num; i++) {
         instrument_t inst_tmp;
         DBG_PRINTF("\nREADING INSTRUMENT #%02X...\n", i);
-        fread(&inst_tmp, 1, sizeof(instrument_t) - 64, ftm_file);
-        fread(inst_tmp.name, 1, inst_tmp.name_len, ftm_file);
-        inst_tmp.name[inst_tmp.name_len] = '\0';
+        uint32_t u32_value = 0;
+        uint8_t u8_value = 0;
+        read_u32(ftm_file, &u32_value);
+        inst_tmp.index = u32_value;
+        read_u8(ftm_file, &u8_value);
+        inst_tmp.type = u8_value;
+        read_u32(ftm_file, &u32_value);
+        inst_tmp.seq_count = u32_value;
+        if (inst_tmp.seq_count > FTM_SEQUENCE_TYPES) {
+            inst_tmp.seq_count = FTM_SEQUENCE_TYPES;
+        }
+        for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
+            uint8_t enable = 0;
+            uint8_t index = 0;
+            read_u8(ftm_file, &enable);
+            read_u8(ftm_file, &index);
+            inst_tmp.seq_index[seq].enable = enable != 0;
+            inst_tmp.seq_index[seq].seq_index = index;
+        }
+        for (uint32_t note = 0; note < FTM_DPCM_NOTES; ++note) {
+            uint8_t pitch = 0;
+            read_u8(ftm_file, &inst_tmp.dpcm[note].index);
+            read_u8(ftm_file, &pitch);
+            read_u8(ftm_file, &inst_tmp.dpcm[note].d_counte);
+            inst_tmp.dpcm[note].pitch = pitch & 0x0F;
+            inst_tmp.dpcm[note].loop = (pitch & 0x80) ? 8 : 0;
+        }
+        read_u32(ftm_file, &u32_value);
+        inst_tmp.name_len = u32_value;
+        uint32_t copy_len = inst_tmp.name_len < sizeof(inst_tmp.name) - 1 ? inst_tmp.name_len : sizeof(inst_tmp.name) - 1;
+        memset(inst_tmp.name, 0, sizeof(inst_tmp.name));
+        fread(inst_tmp.name, 1, copy_len, ftm_file);
+        if (inst_tmp.name_len > copy_len) {
+            fseek(ftm_file, inst_tmp.name_len - copy_len, SEEK_CUR);
+        }
+        inst_tmp.name_len = copy_len;
         DBG_PRINTF("%02lX->NAME: %s\n", inst_tmp.index, inst_tmp.name);
         DBG_PRINTF("TYPE: 0x%X\n", inst_tmp.type);
         DBG_PRINTF("SEQU COUNT: %ld\n", inst_tmp.seq_count);
@@ -300,10 +400,29 @@ void FTM_FILE::read_instrument_data() {
 }
 
 void FTM_FILE::write_instrument_data() {
-    for (int i = 0; i < inst_block.inst_num; i++) {
-        // printf("WRITE INSTRUMENT: %ld\n", instrument[i].index);
-        fwrite(&instrument[i], sizeof(instrument_t) - 64, 1, ftm_file);
-        fwrite(instrument[i].name, instrument[i].name_len, 1, ftm_file);
+    for (size_t i = 0; i < instrument.size(); i++) {
+        if (!is_valid_instrument_slot(instrument, i)) {
+            continue;
+        }
+        instrument_t &inst = instrument[i];
+        inst.type = 1;
+        inst.seq_count = FTM_SEQUENCE_TYPES;
+        instrument_name_length(inst);
+
+        write_u32(ftm_file, inst.index);
+        write_u8(ftm_file, inst.type);
+        write_u32(ftm_file, inst.seq_count);
+        for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
+            write_u8(ftm_file, inst.seq_index[seq].enable ? 1 : 0);
+            write_u8(ftm_file, inst.seq_index[seq].seq_index);
+        }
+        for (uint32_t note = 0; note < FTM_DPCM_NOTES; ++note) {
+            write_u8(ftm_file, inst.dpcm[note].index);
+            write_u8(ftm_file, make_dpcm_pitch_byte(inst.dpcm[note]));
+            write_u8(ftm_file, inst.dpcm[note].d_counte);
+        }
+        write_u32(ftm_file, inst.name_len);
+        fwrite(inst.name, 1, inst.name_len, ftm_file);
     }
 }
 
@@ -334,7 +453,10 @@ void FTM_FILE::write_sequences() {
             if (sequences[type][i].length) {
                 sequences[type][i].type = type;
                 sequences[type][i].index = i;
-                fwrite(&sequences[type][i], 1, 13, ftm_file);
+                write_u32(ftm_file, sequences[type][i].index);
+                write_u32(ftm_file, sequences[type][i].type);
+                write_u8(ftm_file, sequences[type][i].length);
+                write_u32(ftm_file, sequences[type][i].loop);
                 fwrite(sequences[type][i].data.data(), 1, sequences[type][i].length, ftm_file);
                 tol_size += 13 + sequences[type][i].length;
                 sequ_num++;
@@ -369,7 +491,10 @@ void FTM_FILE::read_sequences_data() {
     for (int i = 0; i < seq_block.sequ_num; i++) {
         sequences_t sequ_tmp;
         DBG_PRINTF("\nREADING SEQUENCES #%d...\n", i);
-        fread(&sequ_tmp, 1, 13, ftm_file);
+        read_u32(ftm_file, &sequ_tmp.index);
+        read_u32(ftm_file, &sequ_tmp.type);
+        read_u8(ftm_file, &sequ_tmp.length);
+        read_u32(ftm_file, &sequ_tmp.loop);
         sequ_tmp.data.resize(sequ_tmp.length);
         fread(sequ_tmp.data.data(), 1, sequ_tmp.length, ftm_file);
         DBG_PRINTF("#%ld\n", sequ_tmp.index);
@@ -472,7 +597,6 @@ void FTM_FILE::read_frame_data() {
 
 void FTM_FILE::write_frame() {
     fr_block.size = (fr_block.frame_num * pr_block.channel) + 16;
-    printf("WRITE FRAME: %ld\n", fr_block.frame_num);
     fwrite(&fr_block, sizeof(FRAME_BLOCK), 1, ftm_file);
 
     for (int f = 0; f < fr_block.frame_num; f++) {
@@ -618,19 +742,32 @@ void FTM_FILE::set_pt_item(uint8_t c, uint8_t i, uint32_t r, unpk_item_t item) {
 }
 
 void FTM_FILE::read_dpcm_block() {
-    fread(dpcm_block.id, 1, 16, ftm_file);
+    dpcm_block = DPCM_SAMPLE_BLOCK();
+    dpcm_block.size = 0;
+    dpcm_block.sample_num = 0;
+    size_t read = fread(dpcm_block.id, 1, 16, ftm_file);
+    if (read < 16 || strncmp(dpcm_block.id, "DPCM SAMPLES", 16)) {
+        dpcm_block = DPCM_SAMPLE_BLOCK();
+        dpcm_block.size = 0;
+        dpcm_block.sample_num = 0;
+        DBG_PRINTF("NO DPCM SAMPLE BLOCK\n");
+        return;
+    }
     DBG_PRINTF("DPCM HEADER: %s\n", dpcm_block.id);
     fread(&dpcm_block.version, 4, 1, ftm_file);
     DBG_PRINTF("VERSION: %ld\n", dpcm_block.version);
     fread(&dpcm_block.size, 4, 1, ftm_file);
     DBG_PRINTF("SIZE: %ld\n", dpcm_block.size);
-    fread(&dpcm_block.sample_num, 1, 1, ftm_file);
+    dpcm_block.sample_num = 0;
+    if (dpcm_block.size > 0) {
+        fread(&dpcm_block.sample_num, 1, 1, ftm_file);
+    }
     DBG_PRINTF("SAMPLE_NUM: %d\n", dpcm_block.sample_num);
 }
 
 void FTM_FILE::read_dpcm_data() {
     dpcm_samples.clear();
-    if (dpcm_block.size == 1) {
+    if (dpcm_block.size <= 1 || dpcm_block.sample_num == 0) {
         DBG_PRINTF("NO DPCM SAMPLE\n");
         return;
     }
@@ -643,7 +780,13 @@ void FTM_FILE::read_dpcm_data() {
         dpcm_samples[index].index = index;
         DBG_PRINTF("\n#%d\n", dpcm_samples[index].index);
         fread(&dpcm_samples[index].name_len, 4, 1, ftm_file);
-        fread(dpcm_samples[index].name, 1, dpcm_samples[index].name_len, ftm_file);
+        uint32_t copy_len = dpcm_samples[index].name_len < sizeof(dpcm_samples[index].name) - 1 ? dpcm_samples[index].name_len : sizeof(dpcm_samples[index].name) - 1;
+        memset(dpcm_samples[index].name, 0, sizeof(dpcm_samples[index].name));
+        fread(dpcm_samples[index].name, 1, copy_len, ftm_file);
+        if (dpcm_samples[index].name_len > copy_len) {
+            fseek(ftm_file, dpcm_samples[index].name_len - copy_len, SEEK_CUR);
+        }
+        dpcm_samples[index].name_len = copy_len;
         DBG_PRINTF("NAME(SIZE=%ld): %s\n", dpcm_samples[index].name_len, dpcm_samples[index].name);
         fread(&dpcm_samples[index].sample_size_byte, 4, 1, ftm_file);
         dpcm_samples[index].dpcm_data.resize(dpcm_samples[index].sample_size_byte);
@@ -660,22 +803,38 @@ void FTM_FILE::read_dpcm_data() {
 
 void FTM_FILE::write_dpcm() {
     size_t block_start_addr = ftell(ftm_file);
-    fwrite(&dpcm_block, sizeof(DPCM_SAMPLE_BLOCK), 1, ftm_file);
-    
-    if (dpcm_block.sample_num == 0) {
+    uint8_t sample_count = 0;
+    for (size_t i = 0; i < dpcm_samples.size(); i++) {
+        if (dpcm_samples[i].sample_size_byte && !dpcm_samples[i].dpcm_data.empty()) {
+            sample_count++;
+        }
+    }
+    dpcm_block.sample_num = sample_count;
+    dpcm_block.size = sample_count ? 1 : 0;
+    if (sample_count == 0) {
         return;
     }
+    fwrite(dpcm_block.id, 1, 16, ftm_file);
+    fwrite(&dpcm_block.version, 4, 1, ftm_file);
+    fwrite(&dpcm_block.size, 4, 1, ftm_file);
+    fwrite(&dpcm_block.sample_num, 1, 1, ftm_file);
     
-    size_t tol_size = 2;
+    size_t tol_size = 1;
     for (int i = 0; i < dpcm_samples.size(); i++) {
         dpcm_samples[i].index = i;
-        if (dpcm_samples[i].sample_size_byte) {
+        if (dpcm_samples[i].sample_size_byte && !dpcm_samples[i].dpcm_data.empty()) {
+            dpcm_samples[i].name_len = static_cast<uint32_t>(bounded_strlen(dpcm_samples[i].name, sizeof(dpcm_samples[i].name)));
+            uint32_t write_size = normalized_dpcm_size(dpcm_samples[i].sample_size_byte);
             fwrite(&dpcm_samples[i].index, 1, 1, ftm_file);
             fwrite(&dpcm_samples[i].name_len, 4, 1, ftm_file);
             fwrite(dpcm_samples[i].name, 1, dpcm_samples[i].name_len, ftm_file);
-            fwrite(&dpcm_samples[i].sample_size_byte, 4, 1, ftm_file);
-            fwrite(dpcm_samples[i].dpcm_data.data(), 1, dpcm_samples[i].sample_size_byte, ftm_file);
-            tol_size += 4 + dpcm_samples[i].name_len + 4 + dpcm_samples[i].sample_size_byte;
+            fwrite(&write_size, 4, 1, ftm_file);
+            uint32_t direct_size = write_size < dpcm_samples[i].dpcm_data.size() ? write_size : dpcm_samples[i].dpcm_data.size();
+            fwrite(dpcm_samples[i].dpcm_data.data(), 1, direct_size, ftm_file);
+            for (uint32_t pad = direct_size; pad < write_size; ++pad) {
+                write_u8(ftm_file, 0xAA);
+            }
+            tol_size += 1 + 4 + dpcm_samples[i].name_len + 4 + write_size;
         }
     }
     dpcm_block.size = static_cast<uint32_t>(tol_size);
@@ -683,7 +842,10 @@ void FTM_FILE::write_dpcm() {
     size_t block_end_addr = ftell(ftm_file);
 
     fseek(ftm_file, block_start_addr, SEEK_SET);
-    fwrite(&dpcm_block, sizeof(DPCM_SAMPLE_BLOCK), 1, ftm_file);
+    fwrite(dpcm_block.id, 1, 16, ftm_file);
+    fwrite(&dpcm_block.version, 4, 1, ftm_file);
+    fwrite(&dpcm_block.size, 4, 1, ftm_file);
+    fwrite(&dpcm_block.sample_num, 1, 1, ftm_file);
     fseek(ftm_file, block_end_addr, SEEK_SET);
 }
 

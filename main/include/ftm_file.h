@@ -20,8 +20,7 @@ extern "C" {
 
 typedef struct __attribute__((packed)) {
     char id[18] = {'F','a','m','i','T','r','a','c','k','e','r',' ','M','o','d','u','l','e'};
-    uint16_t version = 0x0440;
-    uint16_t recv = 0;
+    uint32_t version = 0x0440;
 } FTM_HEADER;
 
 typedef struct __attribute__((packed)) {
@@ -130,7 +129,7 @@ typedef struct __attribute__((packed)) {
     char name[64] = "New instrument";
 } instrument_t;
 
-typedef struct __attribute__((packed)) {
+typedef struct {
     uint32_t index;
     uint32_t type;
     uint8_t length;
