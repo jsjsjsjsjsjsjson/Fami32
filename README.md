@@ -6,10 +6,16 @@ Fami32 is a standalone chiptune editor and player for the ESP32 microcontroller.
 The application exposes its file storage as a USB mass storage device and also offers USB MIDI output. Configuration parameters are stored on the flash file system, allowing settings to persist between reboots.
 
 ## Directory Layout
-- **`main/`** – Application source code
-  - `fami32core/` – Audio engine implementation
-  - `gui/` – User interface and menu system
-  - `include/` – Public headers (pin assignments, fonts, etc.)
+- **`main/`** – ESP-IDF application component
+  - `src/app/` – application entry point, boot checks and boot routing
+  - `src/audio/` – audio tables, envelopes, DPCM and frequency helpers
+  - `src/config/` – persistent configuration handling
+  - `src/core/` – Fami32 playback engine implementation
+  - `src/gui/` – user interface and menu system
+  - `src/input/` – keypad and touch input drivers
+  - `src/storage/` – FTM/WAV file parsing helpers
+  - `src/usb/` – TinyUSB, USB MSC and USB audio helpers
+  - `include/` – headers grouped by the same areas, plus `assets/` fonts/icons
 - **`components/`** – Third-party libraries used by the project
   - `Adafruit_GFX_Library`, `Adafruit_SSD1306`, `Adafruit_Keypad`, `Adafruit_MPR121`, `Adafruit_BusIO`
   - `USBMIDI` – simple USB MIDI helper
@@ -34,7 +40,7 @@ The application exposes its file storage as a USB mass storage device and also o
 ## Usage
 Upon reset the device mounts the internal FAT partition as `/flash` and exposes it over USB. Copy FTM modules to this storage to load them from the file menu. A configuration file is stored at `/flash/FM32CONF.CNF` and contains settings such as sample rate, engine speed and filter cut-offs.
 
-Hardware controls are defined in `main/include/fami32_pin.h` and include a keypad matrix and two MPR121 touch controllers. The OLED display uses the SSD1309/SSD1306 driver via SPI. Audio is produced through an external PCM5102A DAC using I2S.
+Hardware controls are defined in `main/include/hardware/fami32_pin.h` and include a keypad matrix and two MPR121 touch controllers. The OLED display uses the SSD1309/SSD1306 driver via SPI. Audio is produced through an external PCM5102A DAC using I2S.
 
 The main tracker interface provides pattern editing similar to FamiTracker. Keys allow navigation, editing and playback control while the touch pads can be used for entering notes. The option menu offers access to settings, file operations and instrument parameters.
 

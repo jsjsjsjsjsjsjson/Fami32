@@ -12,7 +12,7 @@
 #include "gui/gui_input.h"
 #include "boot_check.h"
 #include "touch_input.h"
-#include "../build/git_version.h"
+#include "git_version.h"
 #include "driver/spi_master.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_io_spi.h"

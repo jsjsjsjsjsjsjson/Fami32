@@ -1,7 +1,7 @@
 #include "boot_check.h"
 #include "fonts/rismol_3_5.h"
 #include "fonts/rismol_5_7.h"
-#include "../build/git_version.h"
+#include "git_version.h"
 
 #include <stdint.h>
 

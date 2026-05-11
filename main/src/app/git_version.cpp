@@ -1,4 +1,4 @@
-#include "../build/git_version.h"
+#include "git_version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
