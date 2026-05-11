@@ -2,7 +2,7 @@
 
 Fami32 是一套运行在 ESP32-S3 上的 8-bit / FamiTracker 风格随身 Chiptune 制作固件。
 
-本项目当前以 FamiTracker Module `.ftm` 为工程格式，支持 5 个 NES 基础通道：`PULSE1`、`PULSE2`、`TRIANGLE`、`NOISE`、`DPCM`。固件会把片内 FAT 分区挂载到 `/flash`，所有乐曲、配置、导出的 WAV、导入的 DPCM/WAV 样本都围绕这个分区工作。
+本项目以 FamiTracker Module `.ftm` 为工程格式，支持 5 个 NES 基础通道：`PULSE1`、`PULSE2`、`TRIANGLE`、`NOISE`、`DPCM`。固件会把片内 FAT 分区挂载到 `/flash`，所有乐曲、配置、导出的 WAV、导入的 DPCM/WAV 样本都围绕这个分区工作。
 
 ## 支持
 
