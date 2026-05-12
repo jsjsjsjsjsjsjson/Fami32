@@ -348,6 +348,31 @@ static int build_temp_filename(const char *filename, char *temp, size_t tempSize
     return 0;
 }
 
+static int replace_file_with_temp(const char *tempFilename, const char *filename) {
+    int renameErr;
+
+    if (rename(tempFilename, filename) == 0) {
+        return 0;
+    }
+
+    renameErr = errno;
+
+    /*
+     * FatFS rename does not replace an existing destination. The first config
+     * creation works, but later saves need to remove the old file before
+     * promoting the temporary file.
+     */
+    if (renameErr != EEXIST) {
+        return -1;
+    }
+
+    if (remove(filename) != 0 && errno != ENOENT) {
+        return -1;
+    }
+
+    return rename(tempFilename, filename);
+}
+
 /* ---------- Public API ---------- */
 
 int read_config(const char *filename) {
@@ -452,9 +477,12 @@ int write_config(const char *filename) {
         return CONFIG_FILE_ERROR;
     }
 
-    fclose(file);
+    if (fclose(file) != 0) {
+        remove(tempFilename);
+        return CONFIG_FILE_ERROR;
+    }
 
-    if (rename(tempFilename, filename) != 0) {
+    if (replace_file_with_temp(tempFilename, filename) != 0) {
         remove(tempFilename);
         return CONFIG_FILE_ERROR;
     }
