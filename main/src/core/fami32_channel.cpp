@@ -509,7 +509,8 @@ void FAMI_CHANNEL::set_dpcm_offset(uint8_t n) {
 }
 
 void FAMI_CHANNEL::set_dpcm_var(uint8_t n) {
-    sample_var = n;
+    dmc_hold_level = n & 0x7f;
+    sample_var = dmc_hold_level;
 }
 
 void FAMI_CHANNEL::set_dpcm_pitch(uint8_t n) {
@@ -712,7 +713,7 @@ int8_t FAMI_CHANNEL::get_env_vol() {
 
 uint8_t FAMI_CHANNEL::get_rel_vol() {
     if (mode == DPCM_SAMPLE) {
-        return sample_var * 2;
+        return dmc_hold_level * 2;
     } else {
         return rel_vol;
     }
