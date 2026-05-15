@@ -4,10 +4,7 @@
 #include "fami32_common.h"
 #include "fami32_instrument.h"
 
-#define FIR_TAPS 11
-static const int16_t fir_coef[FIR_TAPS] = {
-    0, 5, 96, 424, 928, 1190, 928, 424, 96, 5, 0
-};
+#define FIR_TAPS 8
 #define FIR_COEF_SHIFT 12
 
 class FAMI_CHANNEL {
@@ -44,6 +41,7 @@ private:
     size_t sample_len = 0;
 
     uint8_t sample_var = 0;
+    uint8_t dmc_hold_level = 0;
 
     int tick_length;
     std::vector<int16_t> tick_buf;
@@ -98,10 +96,10 @@ private:
 
     HighPassFilter hpf;
 
-    struct {
+    struct FirState {
         int32_t hist[FIR_TAPS];
         uint8_t wr;   // ring write index
-    } fir_state;
+    } pcm_fir_state;
 
 public:
     uint8_t base_note;
@@ -122,40 +120,6 @@ public:
     void set_port_up(uint8_t spd, uint8_t offset);
     void set_port_down(uint8_t spd, uint8_t offset);
     void set_delay_cut(uint8_t t);
-
-    void fir_push(int32_t x) {
-        fir_state.hist[fir_state.wr] = x;
-        fir_state.wr++;
-        if (fir_state.wr >= FIR_TAPS) fir_state.wr = 0;
-    }
-
-    int32_t fir_apply_11() {
-        int idx = fir_state.wr - 1;
-        if (idx < 0) idx += 11;
-
-        int i0 = idx;
-        int i1 = (i0 - 1 + 11) % 11;
-        int i2 = (i1 - 1 + 11) % 11;
-        int i3 = (i2 - 1 + 11) % 11;
-        int i4 = (i3 - 1 + 11) % 11;
-        int i5 = (i4 - 1 + 11) % 11;
-        int i6 = (i5 - 1 + 11) % 11;
-        int i7 = (i6 - 1 + 11) % 11;
-        int i8 = (i7 - 1 + 11) % 11;
-        int i9 = (i8 - 1 + 11) % 11;
-        int i10 = (i9 - 1 + 11) % 11;
-
-        int64_t acc = 0;
-
-        acc += (int64_t)(fir_state.hist[i0] + fir_state.hist[i10]) * fir_coef[0];
-        acc += (int64_t)(fir_state.hist[i1] + fir_state.hist[i9])  * fir_coef[1];
-        acc += (int64_t)(fir_state.hist[i2] + fir_state.hist[i8])  * fir_coef[2];
-        acc += (int64_t)(fir_state.hist[i3] + fir_state.hist[i7])  * fir_coef[3];
-        acc += (int64_t)(fir_state.hist[i4] + fir_state.hist[i6])  * fir_coef[4];
-        acc += (int64_t)fir_state.hist[i5]                  * fir_coef[5];
-
-        return (int32_t)(acc >> FIR_COEF_SHIFT);
-    }
 
     void make_tick_sound();
     void update_tick();
@@ -206,6 +170,11 @@ public:
     int get_samp_pos();
     size_t get_samp_len();
     uint32_t get_inst_pos(int sequ_type);
+
+private:
+    void reset_fir_state();
+    void fir_push(FirState &state, int32_t x);
+    int32_t fir_apply_box8(const FirState &state) const;
 };
 
 #endif

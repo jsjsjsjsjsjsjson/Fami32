@@ -1,5 +1,21 @@
 #include "fami32_channel.h"
 
+namespace {
+
+int16_t clamp_i16(int32_t value) {
+    if (value > 32767) return 32767;
+    if (value < -32768) return -32768;
+    return (int16_t)value;
+}
+
+uint8_t clamp_apu_level(int32_t value, uint8_t max_value) {
+    if (value < 0) return 0;
+    if (value > max_value) return max_value;
+    return (uint8_t)value;
+}
+
+} // namespace
+
 void FAMI_CHANNEL::clear_all_fx_flag() {
     chl_vol = 15;
     rel_vol = 0;
@@ -58,6 +74,7 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
     sample_pos = 0;
     sample_fpos = 0;
     sample_var = 0;
+    dmc_hold_level = 0;
     sample_num = 0;
     sample_start = 0;
     sample_status = 0;
@@ -80,8 +97,27 @@ void FAMI_CHANNEL::init(FTM_FILE* data) {
     inst_proc.init(data);
     tick_buf.resize(tick_length);
     apu_level_buf.resize(tick_length);
+    reset_fir_state();
     DBG_PRINTF("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
     hpf.setCutoffFrequency(HPF_CUTOFF, SAMP_RATE);
+}
+
+void FAMI_CHANNEL::reset_fir_state() {
+    memset(&pcm_fir_state, 0, sizeof(pcm_fir_state));
+}
+
+void FAMI_CHANNEL::fir_push(FirState &state, int32_t x) {
+    state.hist[state.wr] = x;
+    state.wr++;
+    if (state.wr >= FIR_TAPS) state.wr = 0;
+}
+
+int32_t FAMI_CHANNEL::fir_apply_box8(const FirState &state) const {
+    int32_t acc = 0;
+    for (int i = 0; i < FIR_TAPS; i++) {
+        acc += state.hist[i];
+    }
+    return acc >> 3;
 }
 
 void FAMI_CHANNEL::set_slide_up(uint8_t n) {
@@ -189,6 +225,8 @@ void FAMI_CHANNEL::make_tick_sound() {
     }
 
     int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
+    int oversample = OVER_SAMPLE;
+    if (oversample < 1) oversample = 1;
 
     int8_t tre_var = 0;
     if (tre_spd && tre_dep) {
@@ -215,40 +253,45 @@ void FAMI_CHANNEL::make_tick_sound() {
         }
         // DBG_PRINTF("(DEBUG: VOL) GET_ENV: %d->%d\n", inst_proc.get_pos(VOL_SEQU), inst_proc.get_sequ_var(VOL_SEQU));
         float rel_pos_count;
-        if (mode == TRIANGULAR) rel_pos_count = pos_count / 2 / OVER_SAMPLE;
+        if (mode == TRIANGULAR) rel_pos_count = pos_count / 2 / oversample;
 
-        else rel_pos_count = pos_count / OVER_SAMPLE;
+        else rel_pos_count = pos_count / oversample;
         uint8_t nes_vol = (rel_vol + 7) / 15;
         if (nes_vol > 15) nes_vol = 15;
 
         for (int i = 0; i < tick_length; i++) {
-            if (!rel_vol) {
-                tick_buf[i] = 0;
-                apu_level_buf[i] = (mode == TRIANGULAR) ? triangle_hold_level : 0;
-                continue;
-            }
-            uint16_t apu_sum = 0;
-            for (int j = 0; j < OVER_SAMPLE; j++) {
-                i_pos = i_pos & 31;
-                int8_t wave = wave_table[mode][i_pos];
-                int32_t sub = wave * rel_vol;
-                if (mode == TRIANGULAR) {
-                    apu_sum += wave + 8;
-                } else {
-                    apu_sum += (wave >= 0) ? nes_vol : 0;
+            uint8_t apu_max = (mode == TRIANGULAR) ? 15 : 15;
+            int32_t pcm_acc = 0;
+            int32_t apu_acc = 0;
+            for (int j = 0; j < oversample; j++) {
+                int32_t pcm_sub = 0;
+                uint8_t apu_sub = (mode == TRIANGULAR) ? triangle_hold_level : 0;
+
+                if (rel_vol) {
+                    i_pos = i_pos & 31;
+                    int8_t wave = wave_table[mode][i_pos];
+                    pcm_sub = wave * rel_vol;
+                    if (mode == TRIANGULAR) {
+                        apu_sub = wave + 8;
+                        triangle_hold_level = apu_sub;
+                    } else {
+                        apu_sub = (wave >= 0) ? nes_vol : 0;
+                    }
+
+                    f_pos += rel_pos_count;
+                    if (f_pos >= 1.0f) {
+                        i_pos += (int)f_pos;
+                        f_pos -= (int)f_pos;
+                    }
                 }
-                fir_push(sub);
-                f_pos += rel_pos_count;
-                if (f_pos >= 1.0f) {
-                    i_pos += (int)f_pos;
-                    f_pos -= (int)f_pos;
-                }
+
+                pcm_acc += pcm_sub;
+                apu_acc += apu_sub;
             }
-            tick_buf[i] = fir_apply_11();
-            apu_level_buf[i] = apu_sum / OVER_SAMPLE;
-            if (mode == TRIANGULAR) {
-                triangle_hold_level = apu_level_buf[i];
-            }
+            int32_t pcm_avg = pcm_acc / oversample;
+            fir_push(pcm_fir_state, pcm_avg);
+            tick_buf[i] = clamp_i16(fir_apply_box8(pcm_fir_state));
+            apu_level_buf[i] = clamp_apu_level((apu_acc + (oversample / 2)) / oversample, apu_max);
         }
     } else if (mode > 5) {
         uint8_t nes_vol = (rel_vol + 7) / 15;
@@ -273,12 +316,14 @@ void FAMI_CHANNEL::make_tick_sound() {
                             sample_pos = 0;
                         } else {
                             sample_status = false;
-                            sample_var = 0;
+                            sample_var = dmc_hold_level;
                             tick_buf[i] = 0;
+                            apu_level_buf[i] = dmc_hold_level;
                             continue;
                         }
                     }
                     sample_var = sample[sample_pos];
+                    dmc_hold_level = sample_var & 0x7f;
                     sample_fpos += count;
                     if (sample_fpos > 1.0f) {
                         sample_pos += (int)sample_fpos;
@@ -294,12 +339,12 @@ void FAMI_CHANNEL::make_tick_sound() {
                 }
                 // printf("SAMPLE_VAR: %d\n", sample_var);
                 tick_buf[i] = hpf.process(sample_var * 64);
-                apu_level_buf[i] = sample_var & 0x7f;
+                apu_level_buf[i] = dmc_hold_level;
             }
         } else {
             for (int i = 0; i < tick_length; i++) {
                 tick_buf[i] = 0;
-                apu_level_buf[i] = 0;
+                apu_level_buf[i] = dmc_hold_level;
             }
         }
     } else {
@@ -479,7 +524,7 @@ void FAMI_CHANNEL::set_arp_fx(uint8_t n1, uint8_t n2) {
 
 void FAMI_CHANNEL::note_end() {
     if (mode == DPCM_SAMPLE) {
-        sample_var = 0;
+        sample_var = dmc_hold_level;
         sample_status = false;
     } else {
         inst_proc.end();
@@ -489,7 +534,7 @@ void FAMI_CHANNEL::note_end() {
 void FAMI_CHANNEL::note_cut() {
     last_note = 255;
     if (mode == DPCM_SAMPLE) {
-        sample_var = 0;
+        sample_var = dmc_hold_level;
         sample_status = false;
     } else {
         inst_proc.cut();

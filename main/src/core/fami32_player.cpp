@@ -22,7 +22,7 @@ void init_nes_mixer_tables() {
         tnd_table[i] = 163.67f / (24329.0f / (float)i + 100.0f);
     }
 
-    nes_mixer_bias = tnd_table[3 * 8];
+    nes_mixer_bias = tnd_table[(3 * 8) + 64];
     nes_mixer_tables_ready = true;
 }
 
@@ -153,7 +153,7 @@ void FAMI_PLAYER::mix_all_channel() {
         uint8_t pulse2 = mute[1] ? 0 : channel[1].get_apu_level_buf()[i];
         uint8_t triangle = mute[2] ? 8 : channel[2].get_apu_level_buf()[i];
         uint8_t noise = mute[3] ? 0 : channel[3].get_apu_level_buf()[i];
-        uint8_t dmc = mute[4] ? 0 : channel[4].get_apu_level_buf()[i];
+        uint8_t dmc = mute[4] ? 64 : channel[4].get_apu_level_buf()[i];
 
         int16_t r = nes_mix_sample(pulse1, pulse2, triangle, noise, dmc);
         r = hpf.process(r);
