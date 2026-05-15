@@ -70,6 +70,9 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
 void FAMI_CHANNEL::init(FTM_FILE* data) {
     tick_length = SAMP_RATE / ENG_SPEED;
     ftm_data = data;
+    mode = PULSE_125;
+    chl_mode = PULSE_125;
+    clear_all_fx_flag();
     inst_proc.init(data);
     tick_buf.resize(tick_length);
     DBG_PRINTF("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
@@ -229,10 +232,24 @@ void FAMI_CHANNEL::make_tick_sound() {
         }
     } else if (mode == DPCM_SAMPLE) {
         float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
-        if (sample_num < ftm_data->dpcm_samples.size()) {
+        if (sample_num >= 0 && sample_num < (int)ftm_data->dpcm_samples.size()) {
+            const std::vector<uint8_t> &pcm = ftm_data->dpcm_samples[sample_num].pcm_data;
             uint8_t *sample = ftm_data->dpcm_samples[sample_num].pcm_data.data();
+            if (sample_len > pcm.size()) {
+                sample_len = pcm.size();
+            }
             for (int i = 0; i < tick_length; i++) {
                 if (sample_status) {
+                    if (sample_pos < 0 || sample_pos >= sample_len) {
+                        if (sample_loop && sample_len > 0) {
+                            sample_pos = 0;
+                        } else {
+                            sample_status = false;
+                            sample_var = 0;
+                            tick_buf[i] = 0;
+                            continue;
+                        }
+                    }
                     sample_var = sample[sample_pos];
                     sample_fpos += count;
                     if (sample_fpos > 1.0f) {
@@ -397,7 +414,7 @@ void FAMI_CHANNEL::note_start() {
     if (mode == DPCM_SAMPLE) {
         sample_fpos = 0;
         sample_pos = sample_start * 512;
-        sample_status = true;
+        sample_status = (sample_num >= 0 && sample_pos < sample_len);
     } else {
         inst_proc.start();
         portup_speed = 0;
@@ -470,13 +487,32 @@ void FAMI_CHANNEL::set_note_rely(uint8_t note) {
         period = note2period(note);
         pos_count = (freq / SAMP_RATE) * 32;
     } else if (mode == DPCM_SAMPLE) {
-        sample_num = inst_proc.get_inst()->dpcm[note - 24].index - 1;
-        if (sample_num < 0) {
-            DBG_PRINTF("DPCM_CHANNEL: WARN -> NO_SAMPLE\n");
+        instrument_t *inst = inst_proc.get_inst();
+        if (inst == NULL || note < 24 || note >= 120) {
+            DBG_PRINTF("DPCM_CHANNEL: WARN -> NOTE_OUT_OF_RANGE %d\n", note);
+            sample_num = -1;
+            sample_len = 0;
+            sample_status = false;
             return;
         }
-        sample_loop = inst_proc.get_inst()->dpcm[note - 24].loop;
-        sample_pitch = inst_proc.get_inst()->dpcm[note - 24].pitch;
+
+        sample_num = inst->dpcm[note - 24].index - 1;
+        if (sample_num < 0) {
+            DBG_PRINTF("DPCM_CHANNEL: WARN -> NO_SAMPLE\n");
+            sample_len = 0;
+            sample_status = false;
+            return;
+        }
+        if (sample_num >= (int)ftm_data->dpcm_samples.size()) {
+            DBG_PRINTF("DPCM_CHANNEL: WARN -> SAMPLE_OUT_OF_RANGE %d\n", sample_num);
+            sample_num = -1;
+            sample_len = 0;
+            sample_status = false;
+            return;
+        }
+
+        sample_loop = inst->dpcm[note - 24].loop;
+        sample_pitch = inst->dpcm[note - 24].pitch;
         sample_len = ftm_data->dpcm_samples[sample_num].sample_size_byte * 8;
         DBG_PRINTF("DPCM_CHANNEL: SET NUM->%d, PITCH->%d, LOOP->%d, SMP_LEN->%d\n", sample_num, sample_pitch, sample_loop, sample_len);
         sample_pos = sample_start * 256;
@@ -516,6 +552,22 @@ uint8_t FAMI_CHANNEL::get_noise_rate() {
 
 uint8_t FAMI_CHANNEL::get_dpcm_pitch() {
     return sample_pitch;
+}
+
+int FAMI_CHANNEL::get_dpcm_sample_num() {
+    return sample_num;
+}
+
+uint8_t FAMI_CHANNEL::get_dpcm_sample_start() {
+    return sample_start;
+}
+
+bool FAMI_CHANNEL::get_dpcm_sample_loop() {
+    return sample_loop;
+}
+
+bool FAMI_CHANNEL::get_dpcm_sample_status() {
+    return sample_status;
 }
 
 void FAMI_CHANNEL::set_mode(WAVE_TYPE m) {

@@ -47,6 +47,7 @@ set(INPUT_SOURCES
 
 set(STORAGE_SOURCES
     src/storage/ftm_file.cpp
+    src/storage/vgm_exporter.cpp
 )
 
 set(USB_SOURCES

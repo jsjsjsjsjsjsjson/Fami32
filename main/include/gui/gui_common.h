@@ -37,6 +37,8 @@ extern GfxOledSSD1306 display;
 extern KeypadIO keypad;
 
 extern i2s_chan_handle_t i2s_tx_handle;
+extern TaskHandle_t SOUND_TASK_HD;
+extern TaskHandle_t KEYPAD_TASK_HD;
 
 // Global GUI state variables (extern definitions, actual instances in gui_common.cpp)
 extern uint8_t main_menu_pos;

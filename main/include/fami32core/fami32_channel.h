@@ -181,6 +181,10 @@ public:
     void set_noise_rate_rel(uint8_t rate);
     uint8_t get_noise_rate();
     uint8_t get_dpcm_pitch();
+    int get_dpcm_sample_num();
+    uint8_t get_dpcm_sample_start();
+    bool get_dpcm_sample_loop();
+    bool get_dpcm_sample_status();
 
     void set_mode(WAVE_TYPE m);
     void set_chl_mode(WAVE_TYPE m);

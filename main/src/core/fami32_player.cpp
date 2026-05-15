@@ -6,8 +6,13 @@ void FAMI_PLAYER::init(FTM_FILE* data) {
         channel[c].init(ftm_data);
     }
 
+    channel[0].set_mode(PULSE_125);
+    channel[0].set_chl_mode(PULSE_125);
+    channel[1].set_mode(PULSE_125);
+    channel[1].set_chl_mode(PULSE_125);
     channel[2].set_mode(TRIANGULAR);
     channel[3].set_mode(NOISE0);
+    channel[3].set_chl_mode(NOISE0);
 
     channel[4].set_mode(DPCM_SAMPLE);
 
@@ -29,6 +34,15 @@ void FAMI_PLAYER::reload() {
         channel[c].init(ftm_data);
     }
 
+    channel[0].set_mode(PULSE_125);
+    channel[0].set_chl_mode(PULSE_125);
+    channel[1].set_mode(PULSE_125);
+    channel[1].set_chl_mode(PULSE_125);
+    channel[2].set_mode(TRIANGULAR);
+    channel[3].set_mode(NOISE0);
+    channel[3].set_chl_mode(NOISE0);
+    channel[4].set_mode(DPCM_SAMPLE);
+
     frame = 0;
     row = 0;
 }
@@ -38,6 +52,7 @@ void FAMI_PLAYER::start_play() {
     set_tempo(ftm_data->fr_block.tempo);
     play_status = true;
     tick_accumulator = ticks_row;
+    row_event_counter = 0;
     row = 0;
     // frame = 0;
 }
@@ -271,6 +286,7 @@ void FAMI_PLAYER::process_tick() {
         }
 
         row++;
+        row_event_counter++;
         if (row >= ftm_data->fr_block.pat_length) {
             next_frame(0);
         }
@@ -324,6 +340,10 @@ void FAMI_PLAYER::set_row(int r) {
 
 int FAMI_PLAYER::get_frame() {
     return frame;
+}
+
+uint32_t FAMI_PLAYER::get_row_event_counter() const {
+    return row_event_counter;
 }
 
 uint8_t FAMI_PLAYER::get_cur_frame_map(int c) {

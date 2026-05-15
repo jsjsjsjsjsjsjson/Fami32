@@ -569,7 +569,7 @@ Visualization 页面显示每个通道的音高和音量历史轨迹，并在下
 | `OPEN` | 从 `/flash` 选择并读取 `.ftm` 文件 |
 | `SAVE` | 保存到当前文件；如果当前没有文件名，则进入另存为流程 |
 | `SAVE AS` | 输入文件名并保存为 `/flash/<名称>.ftm` |
-| `RECORD` | 把当前歌曲渲染并写出为 wav 文件（W.I.P.） |
+| `EXPORT VGM` | 把当前歌曲导出为 NES APU `.vgm` 文件 |
 
 ### 打开文件
 

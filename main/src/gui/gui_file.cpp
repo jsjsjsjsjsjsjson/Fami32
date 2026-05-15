@@ -1,8 +1,40 @@
 #include "gui_file.h"
 #include "gui_input.h"
 #include "gui_menu.h"
+#include "vgm_exporter.h"
 #include <dirent.h>
 #include <sys/stat.h>
+
+namespace {
+
+class ExportTaskFreeze {
+public:
+    ExportTaskFreeze() {
+        if (SOUND_TASK_HD != NULL) {
+            vTaskSuspend(SOUND_TASK_HD);
+            sound_suspended_ = true;
+        }
+        if (KEYPAD_TASK_HD != NULL) {
+            vTaskSuspend(KEYPAD_TASK_HD);
+            keypad_suspended_ = true;
+        }
+    }
+
+    ~ExportTaskFreeze() {
+        if (keypad_suspended_) {
+            vTaskResume(KEYPAD_TASK_HD);
+        }
+        if (sound_suspended_) {
+            vTaskResume(SOUND_TASK_HD);
+        }
+    }
+
+private:
+    bool sound_suspended_ = false;
+    bool keypad_suspended_ = false;
+};
+
+}
 
 // File selection UI: Browse files and directories starting from basePath. Returns chosen file path or NULL if cancelled.
 const char* file_select(const char *basePath) {
@@ -289,62 +321,69 @@ void open_file_page() {
     player.reload(); // Reload player with new file data
 }
 
-// #include "wav.hpp"
+static bool vgm_export_progress(uint32_t ticks, uint32_t samples, void *user) {
+    (void)user;
+    display.clearDisplay();
+    display.fillRect(0, 0, 128, 9, 1);
+    display.setTextColor(0);
+    display.setCursor(1, 1);
+    display.setFont(&rismol57);
+    display.print("EXPORTING VGM...");
+    display.setTextColor(1);
+    display.setCursor(0, 11);
+    display.printf("%lu ticks\n%.02fs", (unsigned long)ticks, (float)samples / 44100.0f);
+    display.display();
+    vTaskDelay(1);
+    return true;
+}
 
-// extern TaskHandle_t SOUND_TASK_HD;
-// extern i2s_chan_handle_t i2s_tx_handle;
+void export_vgm_page() {
+    pause_sound();
 
-// void ftm_record_to_audio() {
-//     player.stop_play();
-//     vTaskSuspend(SOUND_TASK_HD);
+    char current_name[256];
+    char target_path[256];
 
-//     char current_name[256];
-//     char target_path[256];
+    if (strlen(ftm.current_file) == 0) {
+        strcpy(current_name, "Untitled");
+    } else {
+        strcpy(current_name, basename(ftm.current_file));
+        if (strlen(current_name) > 4) {
+            current_name[strlen(current_name) - 4] = '\0';
+        }
+    }
 
-//     strcpy(current_name, basename(ftm.current_file));
-//     if (strlen(current_name) > 4) {
-//         current_name[strlen(current_name) - 4] = '\0'; // remove extension
-//     }
-//     displayKeyboard("RECORD TO...", current_name, 255);
-//     ESP_LOGI("RECORDER", "filename: %s", current_name);
-//     drawPopupBox("RECORDING...");
-//     display.display();
-//     display.setFont(&rismol57);
-//     snprintf(target_path, sizeof(target_path), "/flash/%s.wav", current_name);
+    displayKeyboard("EXPORT VGM...", current_name, 255);
+    snprintf(target_path, sizeof(target_path), "/flash/%s.vgm", current_name);
+    ESP_LOGI("VGM_EXPORT", "Export NES VGM to %s", target_path);
 
-//     WavWriter wr;
-//     WavWriter::Result r = wr.init(target_path, 1, SAMP_RATE, 16);
+    drawPopupBox("EXPORTING VGM...");
+    display.display();
 
-//     player.reload();
-//     player.set_row(0);
-//     player.jmp_to_frame(0);
-//     player.start_play();
-//     uint32_t total_sample = 0;
-//     while (player.get_play_status()) {
-//         player.process_tick();
-//         wr.write_frame(player.get_buf(), player.get_buf_size());
-//         total_sample += player.get_buf_size();
-//         display.clearDisplay();
-//         display.setCursor(0, 0);
-//         display.printf("RECORDING...\n");
-//         display.printf("(%02X/%02lX>%02X)\n", player.get_row(), ftm.fr_block.pat_length, player.get_frame());
-//         display.printf("%ld\nsamples\n%.02fs\nhave been written.", total_sample, (float)total_sample / (float)SAMP_RATE);
-//         display.display();
-//         if (total_sample > (SAMP_RATE * 35)) {
-//             wr.close();
-//             break;
-//         }
-//         vTaskDelay(1);
-//     }
+    display.setFont(&rismol57);
 
-//     player.stop_play();
-//     vTaskResume(SOUND_TASK_HD);
-//     display.setFont(&rismol35);
-// }
+    vgm_export_result_t result;
+    {
+        ExportTaskFreeze freeze;
+        result = export_nes_vgm(&ftm, target_path, vgm_export_progress, NULL);
+    }
 
-// File menu: provides options to create new, open existing, save, save as, and record (if implemented)
+    display.setFont(&rismol35);
+
+    if (result == VGM_EXPORT_OK) {
+        drawPopupBox("VGM EXPORTED");
+    } else {
+        drawPopupBox(vgm_export_result_str(result));
+        ESP_LOGE("VGM_EXPORT", "Export failed: %s", vgm_export_result_str(result));
+    }
+    display.display();
+    vTaskDelay(1024);
+
+    player.reload();
+}
+
+// File menu: provides options to create new, open existing, save, save as, and export NES VGM.
 void menu_file() {
-    static const char *file_menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "RECORD"};
+    static const char *file_menu_str[5] = {"NEW", "OPEN", "SAVE", "SAVE AS", "EXPORT VGM"};
     int ret = menu("FILE", file_menu_str, 5, NULL, 64, 45);
     static char current_name[256];
     static char target_path[256];
@@ -391,7 +430,7 @@ void menu_file() {
             ftm.save_as_ftm(target_path);
             break;
         case 4:
-            // ftm_record_to_audio();
+            export_vgm_page();
             break;
         default:
             break;

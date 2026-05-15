@@ -37,6 +37,7 @@ FAMI_PLAYER player;
 i2s_chan_handle_t i2s_tx_handle;
 TaskHandle_t SOUND_TASK_HD = NULL;
 TaskHandle_t GUI_TASK = NULL;
+TaskHandle_t KEYPAD_TASK_HD = NULL;
 USBMIDI MIDI;
 esp_lcd_panel_handle_t panel;
 GfxOledSSD1306 display(DISPLAY_WIDTH, DISPLAY_HEIGHT);
@@ -324,7 +325,7 @@ extern "C" void app_main(void) {
 
     xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 1);
     touch_input_init();
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, NULL, 0);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, &KEYPAD_TASK_HD, 0);
 
     MIDI.setCallback(midi_callback);
 

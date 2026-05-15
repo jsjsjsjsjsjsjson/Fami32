@@ -18,6 +18,7 @@ private:
     int tempo = 3;
 
     float ticks_row = 0.0f;
+    uint32_t row_event_counter = 0;
 
     std::vector<int16_t> buf;
 
@@ -70,6 +71,7 @@ public:
     int get_row();
     void set_row(int r);
     int get_frame();
+    uint32_t get_row_event_counter() const;
     uint8_t get_cur_frame_map(int c);
     bool get_play_status();
     void set_mute(int c, bool s);
