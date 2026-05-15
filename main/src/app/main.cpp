@@ -296,6 +296,10 @@ extern "C" void app_main(void) {
         set_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ);
         set_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
         set_config_value("VOLUME", CONFIG_INT, &g_vol);
+        int midi_output = _midi_output ? 1 : 0;
+        int debug_print = _debug_print ? 1 : 0;
+        set_config_value("MIDI_OUT", CONFIG_INT, &midi_output);
+        set_config_value("DEBUG_PRINT", CONFIG_INT, &debug_print);
         if (write_config(config_path) != CONFIG_SUCCESS) {
             printf("Failed to write config file.\n");
         }
@@ -309,6 +313,26 @@ extern "C" void app_main(void) {
     get_config_value("BASE_FREQ_HZ", CONFIG_INT, &BASE_FREQ_HZ);
     get_config_value("OVER_SAMPLE", CONFIG_INT, &OVER_SAMPLE);
     get_config_value("VOLUME", CONFIG_INT, &g_vol);
+    bool config_migrated = false;
+    int midi_output = _midi_output ? 1 : 0;
+    if (get_config_value("MIDI_OUT", CONFIG_INT, &midi_output) == CONFIG_SUCCESS) {
+        _midi_output = midi_output != 0;
+    } else {
+        set_config_value("MIDI_OUT", CONFIG_INT, &midi_output);
+        config_migrated = true;
+    }
+
+    int debug_print = _debug_print ? 1 : 0;
+    if (get_config_value("DEBUG_PRINT", CONFIG_INT, &debug_print) == CONFIG_SUCCESS) {
+        _debug_print = debug_print != 0;
+    } else {
+        set_config_value("DEBUG_PRINT", CONFIG_INT, &debug_print);
+        config_migrated = true;
+    }
+
+    if (config_migrated) {
+        write_config(config_path);
+    }
 
     init_tinyusb(usb_cfg_desc_midi, sizeof(usb_cfg_desc_midi));
     MIDI.begin();

@@ -3,9 +3,8 @@
 
 #include "gui_common.h"
 
-// System settings and configuration menu
+// System settings page and standalone setting editors.
 void settings_page();
-// Individual setting adjustment functions (as needed by settings_page menu)
 void vol_set_page();
 void samp_rate_set();
 void eng_speed_set();
