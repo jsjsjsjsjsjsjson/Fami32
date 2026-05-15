@@ -178,7 +178,8 @@ int FTM_FILE::open_ftm(const char *filename) {
     }
     DBG_PRINTF("\nOpen %.18s\n", header.id);
     DBG_PRINTF("VERSION: 0x%lX\n", (unsigned long)header.version);
-    strcpy(current_file, filename);
+    strncpy(current_file, filename, sizeof(current_file) - 1);
+    current_file[sizeof(current_file) - 1] = '\0';
     return 0;
 }
 
@@ -213,7 +214,8 @@ int FTM_FILE::save_as_ftm(const char *filename) {
 
     fclose(ftm_file);
 
-    strcpy(current_file, filename);
+    strncpy(current_file, filename, sizeof(current_file) - 1);
+    current_file[sizeof(current_file) - 1] = '\0';
 
     return 0;
 }
