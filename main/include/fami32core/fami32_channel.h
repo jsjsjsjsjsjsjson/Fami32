@@ -29,6 +29,7 @@ private:
 
     uint8_t noise_rate = 0;
     uint8_t noise_rate_rel = 0;
+    uint8_t triangle_hold_level = 8;
 
     int sample_pos = 0;
     float sample_fpos = 0.0f;
@@ -46,6 +47,7 @@ private:
 
     int tick_length;
     std::vector<int16_t> tick_buf;
+    std::vector<uint8_t> apu_level_buf;
 
     WAVE_TYPE mode;
     WAVE_TYPE chl_mode;
@@ -199,6 +201,8 @@ public:
     int16_t* get_buf();
     size_t get_buf_size_byte();
     size_t get_buf_size();
+    uint8_t* get_apu_level_buf();
+    size_t get_apu_level_buf_size_byte();
     int get_samp_pos();
     size_t get_samp_len();
     uint32_t get_inst_pos(int sequ_type);

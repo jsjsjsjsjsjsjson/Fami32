@@ -1,6 +1,49 @@
 #include "fami32_player.h"
 
+namespace {
+
+float pulse_table[31];
+float tnd_table[203];
+float nes_mixer_bias = 0.0f;
+bool nes_mixer_tables_ready = false;
+
+void init_nes_mixer_tables() {
+    if (nes_mixer_tables_ready) {
+        return;
+    }
+
+    pulse_table[0] = 0.0f;
+    for (int i = 1; i < 31; i++) {
+        pulse_table[i] = 95.52f / (8128.0f / (float)i + 100.0f);
+    }
+
+    tnd_table[0] = 0.0f;
+    for (int i = 1; i < 203; i++) {
+        tnd_table[i] = 163.67f / (24329.0f / (float)i + 100.0f);
+    }
+
+    nes_mixer_bias = tnd_table[3 * 8];
+    nes_mixer_tables_ready = true;
+}
+
+int16_t nes_mix_sample(uint8_t pulse1, uint8_t pulse2, uint8_t triangle, uint8_t noise, uint8_t dmc) {
+    uint8_t pulse_index = pulse1 + pulse2;
+    uint16_t tnd_index = (3 * triangle) + (2 * noise) + dmc;
+    if (pulse_index > 30) pulse_index = 30;
+    if (tnd_index > 202) tnd_index = 202;
+
+    float mixed = (pulse_table[pulse_index] + tnd_table[tnd_index]) - nes_mixer_bias;
+    int32_t sample = (int32_t)(mixed * 32767.0f);
+    if (sample > 32767) sample = 32767;
+    else if (sample < -32768) sample = -32768;
+    return (int16_t)sample;
+}
+
+} // namespace
+
 void FAMI_PLAYER::init(FTM_FILE* data) {
+    init_nes_mixer_tables();
+
     ftm_data = data;
     for (int c = 0; c < 5; c++) {
         channel[c].init(ftm_data);
@@ -63,6 +106,7 @@ void FAMI_PLAYER::stop_play() {
         channel[c].note_cut();
         channel[c].clear_all_fx_flag();
         memset(channel[c].get_buf(), 0, channel[c].get_buf_size_byte());
+        memset(channel[c].get_apu_level_buf(), 0, channel[c].get_apu_level_buf_size_byte());
     }
     tick_accumulator = 0;
     // memset(buf.data(), 0, get_buf_size_byte());
@@ -105,13 +149,13 @@ void FAMI_PLAYER::mix_all_channel() {
         channel[c].update_tick();
     }
     for (size_t i = 0; i < buf.size(); i++) {
-        int32_t r = 0;
-        for (int c = 0; c < 5; c++) {
-            if (!mute[c])
-                r += channel[c].get_buf()[i];
-        }
+        uint8_t pulse1 = mute[0] ? 0 : channel[0].get_apu_level_buf()[i];
+        uint8_t pulse2 = mute[1] ? 0 : channel[1].get_apu_level_buf()[i];
+        uint8_t triangle = mute[2] ? 8 : channel[2].get_apu_level_buf()[i];
+        uint8_t noise = mute[3] ? 0 : channel[3].get_apu_level_buf()[i];
+        uint8_t dmc = mute[4] ? 0 : channel[4].get_apu_level_buf()[i];
 
-        r = tanhf(r / (float)INT32_MAX) * INT32_MAX;
+        int16_t r = nes_mix_sample(pulse1, pulse2, triangle, noise, dmc);
         r = hpf.process(r);
         r = lpf.process(r);
         buf[i] = r;

@@ -64,6 +64,10 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
     sample_len = 0;
     sample_pitch = 0;
 
+    if (mode == TRIANGULAR) {
+        triangle_hold_level = 8;
+    }
+
     last_note = 255;
 }
 
@@ -75,6 +79,7 @@ void FAMI_CHANNEL::init(FTM_FILE* data) {
     clear_all_fx_flag();
     inst_proc.init(data);
     tick_buf.resize(tick_length);
+    apu_level_buf.resize(tick_length);
     DBG_PRINTF("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
     hpf.setCutoffFrequency(HPF_CUTOFF, SAMP_RATE);
 }
@@ -179,6 +184,10 @@ void FAMI_CHANNEL::set_delay_cut(uint8_t t) {
 }
 
 void FAMI_CHANNEL::make_tick_sound() {
+    if (apu_level_buf.size() != tick_buf.size()) {
+        apu_level_buf.resize(tick_buf.size());
+    }
+
     int8_t env_vol = inst_proc.get_sequ_var(VOL_SEQU);
 
     int8_t tre_var = 0;
@@ -209,14 +218,25 @@ void FAMI_CHANNEL::make_tick_sound() {
         if (mode == TRIANGULAR) rel_pos_count = pos_count / 2 / OVER_SAMPLE;
 
         else rel_pos_count = pos_count / OVER_SAMPLE;
+        uint8_t nes_vol = (rel_vol + 7) / 15;
+        if (nes_vol > 15) nes_vol = 15;
+
         for (int i = 0; i < tick_length; i++) {
             if (!rel_vol) {
                 tick_buf[i] = 0;
+                apu_level_buf[i] = (mode == TRIANGULAR) ? triangle_hold_level : 0;
                 continue;
             }
+            uint16_t apu_sum = 0;
             for (int j = 0; j < OVER_SAMPLE; j++) {
                 i_pos = i_pos & 31;
-                int32_t sub = wave_table[mode][i_pos] * rel_vol;
+                int8_t wave = wave_table[mode][i_pos];
+                int32_t sub = wave * rel_vol;
+                if (mode == TRIANGULAR) {
+                    apu_sum += wave + 8;
+                } else {
+                    apu_sum += (wave >= 0) ? nes_vol : 0;
+                }
                 fir_push(sub);
                 f_pos += rel_pos_count;
                 if (f_pos >= 1.0f) {
@@ -225,10 +245,18 @@ void FAMI_CHANNEL::make_tick_sound() {
                 }
             }
             tick_buf[i] = fir_apply_11();
+            apu_level_buf[i] = apu_sum / OVER_SAMPLE;
+            if (mode == TRIANGULAR) {
+                triangle_hold_level = apu_level_buf[i];
+            }
         }
     } else if (mode > 5) {
+        uint8_t nes_vol = (rel_vol + 7) / 15;
+        if (nes_vol > 15) nes_vol = 15;
         for (int i = 0; i < tick_length; i++) {
-            tick_buf[i] = (nes_noise_get_sample(mode - 6) * rel_vol) >> 4;
+            int16_t noise_sample = nes_noise_get_sample(mode - 6);
+            tick_buf[i] = (noise_sample * rel_vol) >> 4;
+            apu_level_buf[i] = noise_sample > 0 ? nes_vol : 0;
         }
     } else if (mode == DPCM_SAMPLE) {
         float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
@@ -266,10 +294,17 @@ void FAMI_CHANNEL::make_tick_sound() {
                 }
                 // printf("SAMPLE_VAR: %d\n", sample_var);
                 tick_buf[i] = hpf.process(sample_var * 64);
+                apu_level_buf[i] = sample_var & 0x7f;
+            }
+        } else {
+            for (int i = 0; i < tick_length; i++) {
+                tick_buf[i] = 0;
+                apu_level_buf[i] = 0;
             }
         }
     } else {
         memset(tick_buf.data(), 0, tick_buf.size() * sizeof(int16_t));
+        memset(apu_level_buf.data(), 0, apu_level_buf.size() * sizeof(uint8_t));
     }
 }
 
@@ -648,6 +683,14 @@ size_t FAMI_CHANNEL::get_buf_size_byte() {
 
 size_t FAMI_CHANNEL::get_buf_size() {
     return tick_buf.size();
+}
+
+uint8_t* FAMI_CHANNEL::get_apu_level_buf() {
+    return apu_level_buf.data();
+}
+
+size_t FAMI_CHANNEL::get_apu_level_buf_size_byte() {
+    return apu_level_buf.size() * sizeof(uint8_t);
 }
 
 int FAMI_CHANNEL::get_samp_pos() {
