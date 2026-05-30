@@ -64,6 +64,9 @@ void frames_menu() {
         display.printf("FRAMES ");
         display.setFont(&font4x6);
         display.printf("(%02X/%02lX)", player.get_frame(), ftm.fr_block.frame_num - 1);
+        display.setFont(&rismol35);
+        display.setCursor(97, 3);
+        display.printf("C(%02X/%02lX)", channel_sel_pos, player.get_channel_count() - 1);
 
         uint8_t first_ch = frames_visible_first_channel();
         uint8_t visible_ch = frames_visible_channel_count();

@@ -25,7 +25,8 @@ extern const char *config_path; // Config file path defined in configuration
 std::vector<unpk_item_t> clipboard_data;  // will be used for copy/paste pattern data
 const char ch_name[FAMI32_MAX_CHANNELS][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM",
-    "VRC7-1", "VRC7-2", "VRC7-3", "VRC7-4", "VRC7-5", "VRC7-6"
+    "VRC7-1", "VRC7-2", "VRC7-3", "VRC7-4", "VRC7-5", "VRC7-6",
+    "FDS", "CH12", "CH13", "CH14", "CH15"
 };
 
 // Pause audio playback and clear audio buffer

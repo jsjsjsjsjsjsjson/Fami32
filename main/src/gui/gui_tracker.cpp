@@ -107,8 +107,12 @@ void tracker_menu() {
             if (c < 5) {
                 static const char *base_short[5] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
                 display.print(base_short[c]);
-            } else {
+            } else if (ftm.is_fds_channel(c)) {
+                display.print("FDS");
+            } else if (ftm.is_vrc7_channel(c)) {
                 display.printf("FM%d", c - FAMI32_VRC7_FIRST_CHANNEL + 1);
+            } else {
+                display.printf("CH%d", c);
             }
         }
         display.drawFastHLine(0, 6, 128, 1);

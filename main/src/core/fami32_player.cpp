@@ -103,6 +103,14 @@ void FAMI_PLAYER::setup_channel_modes() {
             channel[c].set_vrc7_channel(i);
         }
     }
+
+    if (ftm_data != NULL && ftm_data->fds_enabled()) {
+        int fds_c = ftm_data->fds_channel_index();
+        if (fds_c >= 0 && fds_c < FAMI32_MAX_CHANNELS) {
+            channel[fds_c].set_mode(FDS_WAVE);
+            channel[fds_c].set_chl_mode(FDS_WAVE);
+        }
+    }
 }
 
 void FAMI_PLAYER::start_play() {
@@ -235,6 +243,13 @@ void FAMI_PLAYER::mix_all_channel() {
                 }
             }
         }
+
+        if (ftm_data != NULL && ftm_data->fds_enabled()) {
+            int fds_c = ftm_data->fds_channel_index();
+            if (fds_c >= 0 && fds_c < (int)count && i < channel[fds_c].get_buf_size() && !mute[fds_c]) {
+                mixed += channel[fds_c].get_buf()[i];
+            }
+        }
         int16_t r = clamp_i16(mixed);
         r = hpf.process(r);
         r = lpf.process(r);
@@ -304,6 +319,15 @@ void FAMI_PLAYER::process_efx_pre(fx_t fxdata[4], int c) {
         } else if (fxdata[i].fx_cmd == 0x0D) {
             channel[c].set_period_offset(fxdata[i].fx_var - 0x80);
             DBG_PRINTF("C%d: SET PERIOD_OFFSET -> %d\n", c, fxdata[i].fx_var - 0x80);
+        } else if (fxdata[i].fx_cmd == 0x08) {
+            channel[c].set_fds_mod_depth(fxdata[i].fx_var);
+            DBG_PRINTF("C%d: SET FDS MOD DEPTH -> %d\n", c, fxdata[i].fx_var);
+        } else if (fxdata[i].fx_cmd == 0x09) {
+            channel[c].set_fds_mod_speed_hi(fxdata[i].fx_var);
+            DBG_PRINTF("C%d: SET FDS MOD SPEED HI -> %d\n", c, fxdata[i].fx_var);
+        } else if (fxdata[i].fx_cmd == 0x1C) {
+            channel[c].set_fds_mod_speed_lo(fxdata[i].fx_var);
+            DBG_PRINTF("C%d: SET FDS MOD SPEED LO -> %d\n", c, fxdata[i].fx_var);
         } else if (fxdata[i].fx_cmd == 0x0F) {
             channel[c].set_dpcm_var(fxdata[i].fx_var);
             DBG_PRINTF("C%d: SET DPCM VAR -> %d\n", c, fxdata[i].fx_var);

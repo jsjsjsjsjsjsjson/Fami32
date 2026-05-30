@@ -21,15 +21,18 @@ extern "C" {
 #define FAMI32_BASE_CHANNELS 5
 #define FAMI32_VRC7_CHANNELS 6
 #define FAMI32_VRC7_FIRST_CHANNEL 5
+#define FAMI32_FDS_CHANNELS 1
 #define FAMI32_MAX_CHANNELS 16
 
 #define FTM_EXT_NONE 0x00
 #define FTM_EXT_VRC7 0x02
+#define FTM_EXT_FDS 0x04
 
 #define INST_NONE 0
 #define INST_2A03 1
 #define INST_VRC6 2
 #define INST_VRC7 3
+#define INST_FDS 4
 
 typedef struct __attribute__((packed)) {
     char id[18] = {'F','a','m','i','T','r','a','c','k','e','r',' ','M','o','d','u','l','e'};
@@ -132,6 +135,20 @@ typedef struct __attribute__((packed)) {
     uint8_t seq_index;
 } seq_index_t;
 
+#define SEQ_FEAT_DISABLE 0xffffffff
+#define FAMI32_FDS_WAVE_SIZE 64
+#define FAMI32_FDS_MOD_SIZE 32
+#define FAMI32_FDS_SEQUENCE_TYPES 3
+#define FAMI32_FDS_SEQUENCE_MAX 255
+
+typedef struct __attribute__((packed)) {
+    uint8_t length = 0;
+    uint32_t loop = SEQ_FEAT_DISABLE;
+    uint32_t release = SEQ_FEAT_DISABLE;
+    uint32_t setting = 0;
+    int8_t data[FAMI32_FDS_SEQUENCE_MAX] = {0};
+} fds_sequence_t;
+
 typedef struct __attribute__((packed)) {
     uint32_t index = 0;
     uint8_t type = INST_2A03;
@@ -140,6 +157,17 @@ typedef struct __attribute__((packed)) {
     dpcm_t dpcm[96];
     uint32_t vrc7_patch = 0;
     uint8_t vrc7_regs[8] = {0x01, 0x21, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x0F};
+    uint8_t fds_wave[FAMI32_FDS_WAVE_SIZE] = {
+        0, 1,12,22,32,36,39,39,42,47,47,50,48,51,54,58,
+        54,55,49,50,52,61,63,63,59,56,53,51,48,47,41,35,
+        35,35,41,47,48,51,53,56,59,63,63,61,52,50,49,55,
+        54,58,54,51,48,50,47,47,42,39,39,36,32,22,12, 1
+    };
+    uint8_t fds_mod[FAMI32_FDS_MOD_SIZE] = {0};
+    uint32_t fds_mod_speed = 0;
+    uint32_t fds_mod_depth = 0;
+    uint32_t fds_mod_delay = 0;
+    fds_sequence_t fds_seq[FAMI32_FDS_SEQUENCE_TYPES];
     uint32_t name_len = 14;
     char name[64] = "New instrument";
 } instrument_t;
@@ -168,8 +196,6 @@ typedef struct __attribute__((packed)) {
 #define NO_INST 0x40
 #define NO_VOL 0x10
 #define NO_EFX 0
-
-#define SEQ_FEAT_DISABLE 0xffffffff
 
 #define NOTE_CUT 14
 #define NOTE_END 13
@@ -298,6 +324,10 @@ public:
     bool vrc7_enabled() const;
     void set_vrc7_enabled(bool enabled);
     bool is_vrc7_channel(int c) const;
+    bool fds_enabled() const;
+    void set_fds_enabled(bool enabled);
+    bool is_fds_channel(int c) const;
+    int fds_channel_index() const;
     int read_ftm_all();
 
     int8_t get_sequ_data(int type, int index, int seq_index);

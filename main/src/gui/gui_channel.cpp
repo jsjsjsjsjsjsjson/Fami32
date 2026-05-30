@@ -21,10 +21,10 @@ void channel_sel_page() {
 // Channel settings menu: select channel, toggle VRC7, or adjust effect columns.
 void channel_setting_page() {
     drawChessboard(0, 0, 128, 64);
-    const char *options[3] = {"SELECT CHAN", ftm.vrc7_enabled() ? "VRC7 CHIP:ON" : "VRC7 CHIP:OFF", "EXT EFX NUM"};
+    const char *options[4] = {"SELECT CHAN", ftm.vrc7_enabled() ? "VRC7 CHIP:ON" : "VRC7 CHIP:OFF", ftm.fds_enabled() ? "FDS CHIP:ON" : "FDS CHIP:OFF", "EXT EFX NUM"};
     char title[16];
     snprintf(title, sizeof(title), "CHANNEL%d", channel_sel_pos);
-    int ret = menu(title, options, 3, nullptr, 64, 29);
+    int ret = menu(title, options, 4, nullptr, 72, 37);
     int tmp = ftm.he_block.ch_fx[channel_sel_pos];
     switch (ret) {
         case 0:
@@ -36,6 +36,11 @@ void channel_setting_page() {
             set_channel_sel_pos(channel_sel_pos);
             break;
         case 2:
+            ftm.set_fds_enabled(!ftm.fds_enabled());
+            player.reload();
+            set_channel_sel_pos(channel_sel_pos);
+            break;
+        case 3:
             drawChessboard(0, 0, 128, 64);
             num_set_menu_int("EXT EFX NUM", 0, 3, 1, &tmp, 0, 0, 64, 32);
             ftm.he_block.ch_fx[channel_sel_pos] = tmp;
@@ -82,7 +87,13 @@ void channel_menu() {
         display.setTextColor(0);
         display.setFont(&rismol57);
         display.setCursor(1, 1);
-        display.printf("%s ", ch_name[channel_sel_pos]);
+        if (ftm.is_fds_channel(channel_sel_pos)) {
+            display.print("FDS ");
+        } else if (ftm.is_vrc7_channel(channel_sel_pos)) {
+            display.printf("VRC7-%u ", (unsigned)(channel_sel_pos - FAMI32_VRC7_FIRST_CHANNEL + 1));
+        } else {
+            display.printf("%s ", ch_name[channel_sel_pos]);
+        }
         display.setFont(&font4x6);
         display.printf("(CHAN%d)", channel_sel_pos);
 

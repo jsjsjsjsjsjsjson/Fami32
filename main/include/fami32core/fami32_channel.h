@@ -103,6 +103,15 @@ private:
     uint16_t vrc7_fnum = 0;
     uint8_t vrc7_block = 0;
 
+    float fds_pos = 0.0f;
+    uint8_t fds_wave[FAMI32_FDS_WAVE_SIZE] = {0};
+    uint8_t fds_mod[FAMI32_FDS_MOD_SIZE] = {0};
+    uint32_t fds_mod_speed = 0;
+    uint32_t fds_mod_depth = 0;
+    uint32_t fds_mod_delay = 0;
+    uint32_t fds_mod_counter = 0;
+    bool fds_gate = false;
+
     HighPassFilter hpf;
 
     struct FirState {
@@ -177,6 +186,12 @@ public:
     uint8_t get_vrc7_block() const;
     uint8_t get_vrc7_volume() const;
 
+    bool is_fds_mode() const;
+    bool get_fds_gate() const;
+    void set_fds_mod_depth(uint8_t depth);
+    void set_fds_mod_speed_hi(uint8_t value);
+    void set_fds_mod_speed_lo(uint8_t value);
+
     void set_note(uint8_t note);
     void set_vol(int8_t vol);
 
@@ -195,8 +210,9 @@ public:
 private:
     void reset_fir_state();
     void sync_vrc7_instrument();
+    void sync_fds_instrument();
     void fir_push(FirState &state, int32_t x);
-    int32_t fir_apply_box8(const FirState &state) const;
+    int32_t fir_apply(const FirState &state) const;
 };
 
 #endif
