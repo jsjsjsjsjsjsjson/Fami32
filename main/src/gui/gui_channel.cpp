@@ -340,6 +340,6 @@ void channel_menu() {
             }
         }
 
-        vTaskDelay(2);
+        vTaskDelay(10);
     }
 }
