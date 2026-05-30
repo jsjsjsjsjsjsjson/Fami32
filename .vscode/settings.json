@@ -108,5 +108,5 @@
         "*.in": "c"
     },
     "C_Cpp.errorSquiggles": "enabled",
-    "idf.currentSetup": "/home/libchara/.espressif/v5.4.3/esp-idf"
+    "idf.currentSetup": "/home/libchara/.espressif/v5.5.4/esp-idf"
 }
