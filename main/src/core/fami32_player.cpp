@@ -39,25 +39,24 @@ int16_t nes_mix_sample(uint8_t pulse1, uint8_t pulse2, uint8_t triangle, uint8_t
     return (int16_t)sample;
 }
 
+int16_t clamp_i16(int32_t sample) {
+    if (sample > 32767) return 32767;
+    if (sample < -32768) return -32768;
+    return (int16_t)sample;
+}
+
 } // namespace
 
 void FAMI_PLAYER::init(FTM_FILE* data) {
     init_nes_mixer_tables();
 
     ftm_data = data;
-    for (int c = 0; c < 5; c++) {
+    for (uint32_t c = 0; c < FAMI32_MAX_CHANNELS; c++) {
         channel[c].init(ftm_data);
     }
 
-    channel[0].set_mode(PULSE_125);
-    channel[0].set_chl_mode(PULSE_125);
-    channel[1].set_mode(PULSE_125);
-    channel[1].set_chl_mode(PULSE_125);
-    channel[2].set_mode(TRIANGULAR);
-    channel[3].set_mode(NOISE0);
-    channel[3].set_chl_mode(NOISE0);
-
-    channel[4].set_mode(DPCM_SAMPLE);
+    setup_channel_modes();
+    vrc7.init(SAMP_RATE);
 
     buf.resize(channel[0].get_buf_size());
 
@@ -73,21 +72,37 @@ void FAMI_PLAYER::reload() {
 
     set_speed(ftm_data->fr_block.speed);
     set_tempo(ftm_data->fr_block.tempo);
-    for (int c = 0; c < 5; c++) {
+    for (uint32_t c = 0; c < FAMI32_MAX_CHANNELS; c++) {
         channel[c].init(ftm_data);
     }
 
+    setup_channel_modes();
+    vrc7.reset();
+
+    frame = 0;
+    row = 0;
+}
+
+void FAMI_PLAYER::setup_channel_modes() {
     channel[0].set_mode(PULSE_125);
     channel[0].set_chl_mode(PULSE_125);
     channel[1].set_mode(PULSE_125);
     channel[1].set_chl_mode(PULSE_125);
     channel[2].set_mode(TRIANGULAR);
+    channel[2].set_chl_mode(TRIANGULAR);
     channel[3].set_mode(NOISE0);
     channel[3].set_chl_mode(NOISE0);
     channel[4].set_mode(DPCM_SAMPLE);
+    channel[4].set_chl_mode(DPCM_SAMPLE);
 
-    frame = 0;
-    row = 0;
+    if (ftm_data != NULL && ftm_data->vrc7_enabled()) {
+        for (uint8_t i = 0; i < FAMI32_VRC7_CHANNELS; ++i) {
+            uint8_t c = FAMI32_VRC7_FIRST_CHANNEL + i;
+            channel[c].set_mode(VRC7_FM);
+            channel[c].set_chl_mode(VRC7_FM);
+            channel[c].set_vrc7_channel(i);
+        }
+    }
 }
 
 void FAMI_PLAYER::start_play() {
@@ -102,7 +117,7 @@ void FAMI_PLAYER::start_play() {
 
 void FAMI_PLAYER::stop_play() {
     play_status = false;
-    for (int c = 0; c < 5; c++) {
+    for (uint32_t c = 0; c < get_channel_count(); c++) {
         channel[c].note_cut();
         channel[c].clear_all_fx_flag();
         memset(channel[c].get_buf(), 0, channel[c].get_buf_size_byte());
@@ -144,10 +159,64 @@ float FAMI_PLAYER::get_ticks_row() const {
     return ticks_row;
 }
 
+void FAMI_PLAYER::sync_vrc7_registers() {
+    if (ftm_data == NULL || !ftm_data->vrc7_enabled() || !vrc7.is_ready()) {
+        return;
+    }
+
+    for (uint8_t i = 0; i < FAMI32_VRC7_CHANNELS; ++i) {
+        uint8_t c = FAMI32_VRC7_FIRST_CHANNEL + i;
+        FAMI_CHANNEL &ch = channel[c];
+
+        uint8_t patch = ch.get_vrc7_patch() & 0x0F;
+        if (patch == 0) {
+            for (uint8_t r = 0; r < 8; ++r) {
+                vrc7.write_reg(r, ch.get_vrc7_reg(r));
+            }
+        }
+
+        uint16_t fnum = ch.get_vrc7_fnum();
+        uint8_t key = 0;
+        if (!mute[c]) {
+            if (ch.get_vrc7_gate()) {
+                key = 0x30;
+            } else if (ch.get_vrc7_release()) {
+                key = 0x20;
+            }
+        }
+
+        const uint8_t freq_low = fnum & 0xFF;
+        const uint8_t freq_high = ((fnum >> 8) & 0x01) | (ch.get_vrc7_block() << 1);
+        const bool trigger_note = ch.consume_vrc7_trigger() && key == 0x30;
+
+        vrc7.write_reg(0x10 + i, freq_low);
+        vrc7.write_reg(0x30 + i, (patch << 4) | ch.get_vrc7_volume());
+
+        /*
+         * OPLL/VRC7 does not retrigger its envelope when only f-number or
+         * block changes while the key bit stays high.  A tracker note start
+         * must force a 1 -> 0 -> 1 transition on bit 4 of $20 + channel.
+         * Without this, repeated notes on the same VRC7 channel sound like a
+         * pitch change/legato instead of a new attack.
+         */
+        if (trigger_note) {
+            vrc7.write_reg(0x20 + i, freq_high);
+        }
+        vrc7.write_reg(0x20 + i, freq_high | key);
+    }
+}
+
 void FAMI_PLAYER::mix_all_channel() {
-    for (int c = 0; c < 5; c++) {
+    uint32_t count = get_channel_count();
+    for (uint32_t c = 0; c < count; c++) {
         channel[c].update_tick();
     }
+
+    bool use_vrc7 = ftm_data != NULL && ftm_data->vrc7_enabled() && vrc7.is_ready();
+    if (use_vrc7) {
+        sync_vrc7_registers();
+    }
+
     for (size_t i = 0; i < buf.size(); i++) {
         uint8_t pulse1 = mute[0] ? 0 : channel[0].get_apu_level_buf()[i];
         uint8_t pulse2 = mute[1] ? 0 : channel[1].get_apu_level_buf()[i];
@@ -155,7 +224,18 @@ void FAMI_PLAYER::mix_all_channel() {
         uint8_t noise = mute[3] ? 0 : channel[3].get_apu_level_buf()[i];
         uint8_t dmc = mute[4] ? 0 : channel[4].get_apu_level_buf()[i];
 
-        int16_t r = nes_mix_sample(pulse1, pulse2, triangle, noise, dmc);
+        int32_t mixed = nes_mix_sample(pulse1, pulse2, triangle, noise, dmc);
+        if (use_vrc7) {
+            mixed += vrc7.calc();
+
+            for (uint8_t fm = 0; fm < FAMI32_VRC7_CHANNELS; ++fm) {
+                uint8_t c = FAMI32_VRC7_FIRST_CHANNEL + fm;
+                if (c < count && i < channel[c].get_buf_size()) {
+                    channel[c].get_buf()[i] = mute[c] ? 0 : vrc7.get_channel_sample(fm);
+                }
+            }
+        }
+        int16_t r = clamp_i16(mixed);
         r = hpf.process(r);
         r = lpf.process(r);
         buf[i] = r;
@@ -163,10 +243,12 @@ void FAMI_PLAYER::mix_all_channel() {
 }
 
 uint8_t FAMI_PLAYER::get_chl_vol(int n) {
+    if (n < 0 || n >= (int)get_channel_count()) return 0;
     return channel[n].get_vol();
 }
 
 int8_t FAMI_PLAYER::get_chl_env_vol(int n) {
+    if (n < 0 || n >= (int)get_channel_count()) return 0;
     return channel[n].get_env_vol();
 }
 
@@ -307,7 +389,7 @@ void FAMI_PLAYER::process_tick() {
         mix_all_channel();
         return;
     }
-    for (int c = 0; c < 5; c++) {
+    for (uint32_t c = 0; c < get_channel_count(); c++) {
         if (!delay_status[c]) {
             continue;
         }
@@ -321,7 +403,7 @@ void FAMI_PLAYER::process_tick() {
     }
 
     while (tick_accumulator >= ticks_row) {
-        for (int c = 0; c < 5; c++) {
+        for (uint32_t c = 0; c < get_channel_count(); c++) {
             ft_items[c] = ftm_data->get_pt_item(c, ftm_data->get_frame_map(frame, c), row);
             // process_efx(ft_items[c].fxdata, c);
             process_delay_efx(ft_items[c].fxdata, c);
@@ -399,11 +481,23 @@ bool FAMI_PLAYER::get_play_status() {
 }
 
 void FAMI_PLAYER::set_mute(int c, bool s) {
+    if (c < 0 || c >= FAMI32_MAX_CHANNELS) return;
     mute[c] = s;
 }
 
 bool FAMI_PLAYER::get_mute(int c) {
+    if (c < 0 || c >= FAMI32_MAX_CHANNELS) return false;
     return mute[c];
+}
+
+uint32_t FAMI_PLAYER::get_channel_count() const {
+    if (ftm_data == NULL) {
+        return FAMI32_BASE_CHANNELS;
+    }
+    uint32_t count = ftm_data->get_channel_count();
+    if (count > FAMI32_MAX_CHANNELS) count = FAMI32_MAX_CHANNELS;
+    if (count < FAMI32_BASE_CHANNELS) count = FAMI32_BASE_CHANNELS;
+    return count;
 }
 
 void FAMI_PLAYER::recalculate_ticks_row() {

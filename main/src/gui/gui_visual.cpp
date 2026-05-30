@@ -3,23 +3,50 @@
 #include "gui_tracker.h"   // for menu_navi(), main_option_page()
 #include "gui_input.h"
 
+static uint8_t visual_visible_first_channel() {
+    uint8_t count = player.get_channel_count();
+    uint8_t visible = count < 5 ? count : 5;
+    if (count <= visible) return 0;
+    int first = channel_sel_pos - 2;
+    if (first < 0) first = 0;
+    int max_first = count - visible;
+    if (first > max_first) first = max_first;
+    return first;
+}
+
+static uint8_t visual_visible_channel_count() {
+    uint8_t count = player.get_channel_count();
+    return count < 5 ? count : 5;
+}
+
 void osc_menu() {
     for (;;) {
         display.clearDisplay();
         display.setCursor(2, 0);
         display.print("R");
-        display.setCursor(14, 0);
-        display.print("PU1   PU2   TRI   NOS   DMC");
+        uint8_t first_ch = visual_visible_first_channel();
+        uint8_t visible_ch = visual_visible_channel_count();
+        for (uint8_t d = 0; d < visible_ch; ++d) {
+            uint8_t c = first_ch + d;
+            display.setCursor(14 + (d * 24), 0);
+            if (c < 5) {
+                static const char *base_short[5] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
+                display.print(base_short[c]);
+            } else {
+                display.printf("FM%d", c - FAMI32_VRC7_FIRST_CHANNEL + 1);
+            }
+        }
         display.drawFastHLine(0, 6, 128, 1);
         display.setCursor(0, 11);
         display.drawFastHLine(0, 10, 128, 1);
         drawChessboard(0, 7, 7, 3);
 
-        for (int c = 0; c < 5; c++) {
+        for (uint8_t d = 0; d < visible_ch; d++) {
+            uint8_t c = first_ch + d;
             if (player.get_mute(c))
-                drawChessboard((c * 24) + 8, 7, 23, 3);
+                drawChessboard((d * 24) + 8, 7, 23, 3);
 
-            display.fillRect((c * 24) + 8, 7, roundf(player.channel[c].get_rel_vol() * (23.0f/225.0f)), 3, 1);
+            display.fillRect((d * 24) + 8, 7, roundf(player.channel[c].get_rel_vol() * (23.0f/225.0f)), 3, 1);
         }
         for (int r = -4; r < 5; r++) {
             if (r) {
@@ -34,22 +61,23 @@ void osc_menu() {
             display.printf("\n");
         }
         display.drawFastVLine(7, 0, 64, 1);
-        for (int i = 0; i < 5; i++) {
-            display.drawFastVLine((i * 24) + 31, 0, 64, 1);
+        for (uint8_t d = 0; d < visible_ch; d++) {
+            uint8_t i = first_ch + d;
+            display.drawFastVLine((d * 24) + 31, 0, 64, 1);
             if (i == channel_sel_pos) {
-                display.setCursor((i * 24) + 9, 0);
+                display.setCursor((d * 24) + 9, 0);
                 display.print(">");
                 if (edit_mode) {
-                    invertRect((i * 24) + 8, 0, 23, 6);
+                    invertRect((d * 24) + 8, 0, 23, 6);
                 }
             }
         }
 
-        for (int i = 0; i < 5; i++) {
-            int draw_base = (i * 24) + 19;
-            // display.drawFastVLine((i * 24) + 19, 11, 53, 1);
+        for (uint8_t d = 0; d < visible_ch; d++) {
+            uint8_t i = first_ch + d;
+            int draw_base = (d * 24) + 19;
             if (player.get_mute(i)) {
-                drawPinstripe((i * 24) + 8, 11, 23, 53);
+                drawPinstripe((d * 24) + 8, 11, 23, 53);
             }
             for (int y = 11; y < 63; y++) {
                 int16_t p1 = limit_value(player.channel[i].get_buf()[y * 4] / 170, -12, 12);

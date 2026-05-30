@@ -94,6 +94,15 @@ private:
 
     uint8_t rel_vol;
 
+    uint8_t vrc7_channel_index = 0;
+    uint8_t vrc7_patch = 0;
+    uint8_t vrc7_regs[8] = {0x01, 0x21, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x0F};
+    bool vrc7_gate = false;
+    bool vrc7_release = false;
+    bool vrc7_trigger = false;
+    uint16_t vrc7_fnum = 0;
+    uint8_t vrc7_block = 0;
+
     HighPassFilter hpf;
 
     struct FirState {
@@ -156,6 +165,18 @@ public:
     void set_chl_mode(WAVE_TYPE m);
     WAVE_TYPE get_mode();
 
+    void set_vrc7_channel(uint8_t n);
+    uint8_t get_vrc7_channel() const;
+    bool is_vrc7_mode() const;
+    bool get_vrc7_gate() const;
+    bool get_vrc7_release() const;
+    bool consume_vrc7_trigger();
+    uint8_t get_vrc7_patch() const;
+    uint8_t get_vrc7_reg(uint8_t reg) const;
+    uint16_t get_vrc7_fnum() const;
+    uint8_t get_vrc7_block() const;
+    uint8_t get_vrc7_volume() const;
+
     void set_note(uint8_t note);
     void set_vol(int8_t vol);
 
@@ -173,6 +194,7 @@ public:
 
 private:
     void reset_fir_state();
+    void sync_vrc7_instrument();
     void fir_push(FirState &state, int32_t x);
     int32_t fir_apply_box8(const FirState &state) const;
 };

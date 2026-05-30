@@ -18,6 +18,19 @@ extern "C" {
 #define NO_SUPPORT_EXTCHIP -4
 #define NO_SUPPORT_MULTITRACK -5
 
+#define FAMI32_BASE_CHANNELS 5
+#define FAMI32_VRC7_CHANNELS 6
+#define FAMI32_VRC7_FIRST_CHANNEL 5
+#define FAMI32_MAX_CHANNELS 16
+
+#define FTM_EXT_NONE 0x00
+#define FTM_EXT_VRC7 0x02
+
+#define INST_NONE 0
+#define INST_2A03 1
+#define INST_VRC6 2
+#define INST_VRC7 3
+
 typedef struct __attribute__((packed)) {
     char id[18] = {'F','a','m','i','T','r','a','c','k','e','r',' ','M','o','d','u','l','e'};
     uint32_t version = 0x0440;
@@ -28,7 +41,7 @@ typedef struct __attribute__((packed)) {
     uint32_t version = 0x00000006;
     uint32_t size = 0x0000001D;
     uint8_t ext_chip = 0x00;
-    uint32_t channel = 0x00000005;
+    uint32_t channel = FAMI32_BASE_CHANNELS;
     uint32_t machine = 0;
     uint32_t e_speed = 0;
     uint32_t v_style = 1;
@@ -57,8 +70,8 @@ typedef struct __attribute__((packed)) {
     uint32_t size = 20;
     uint8_t track_num = 0;
     char name[64] = "_FAMI32_";
-    uint8_t ch_id[8] = {0, 1, 2, 3, 4, 5, 6, 7};
-    uint8_t ch_fx[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t ch_id[FAMI32_MAX_CHANNELS] = {0, 1, 2, 3, 4};
+    uint8_t ch_fx[FAMI32_MAX_CHANNELS] = {0};
 } HEADER_BLOCK;
 
 typedef struct __attribute__((packed)) {
@@ -121,10 +134,12 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     uint32_t index = 0;
-    uint8_t type = 1;
+    uint8_t type = INST_2A03;
     uint32_t seq_count = 5;
     seq_index_t seq_index[5] = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
     dpcm_t dpcm[96];
+    uint32_t vrc7_patch = 0;
+    uint8_t vrc7_regs[8] = {0x01, 0x21, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x0F};
     uint32_t name_len = 14;
     char name[64] = "New instrument";
 } instrument_t;
@@ -231,6 +246,7 @@ public:
     std::vector<dpcm_sample_t> dpcm_samples;
 
     void create_new_inst();
+    void set_inst_type(int n, uint8_t type);
     void remove_inst(int n);
 
     int open_ftm(const char *filename);
@@ -278,6 +294,10 @@ public:
 
     void print_frame_data(int index);
     uint8_t ch_fx_count(int n);
+    uint32_t get_channel_count() const;
+    bool vrc7_enabled() const;
+    void set_vrc7_enabled(bool enabled);
+    bool is_vrc7_channel(int c) const;
     int read_ftm_all();
 
     int8_t get_sequ_data(int type, int index, int seq_index);
@@ -300,6 +320,10 @@ public:
     void remove_frame(int n);
     void moveup_frame(int n);
     void movedown_frame(int n);
+
+private:
+    void apply_channel_layout();
+    void resize_channel_storage(uint32_t new_count);
 };
 
 extern FTM_FILE ftm;

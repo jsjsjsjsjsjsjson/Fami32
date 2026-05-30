@@ -4,28 +4,38 @@
 #include "gui_instrument.h" // for instrument_menu (if needed)
 #include "gui_tracker.h"    // for menu_navi(), main_option_page()
 
-// Simple menu to select current channel (0-4)
+// Simple menu to select current channel.
 void channel_sel_page() {
-    static const char *chan_str[5] = {"PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM"};
-    int ret = menu("CHANNEL", chan_str, 5, nullptr, 64, 53, 0, 0, channel_sel_pos);
+    const char *chan_str[FAMI32_MAX_CHANNELS];
+    uint32_t count = player.get_channel_count();
+    if (count > FAMI32_MAX_CHANNELS) count = FAMI32_MAX_CHANNELS;
+    for (uint32_t i = 0; i < count; ++i) {
+        chan_str[i] = ch_name[i];
+    }
+    int ret = menu("CHANNEL", chan_str, count, nullptr, 64, 53, 0, 0, channel_sel_pos);
     if (ret != -1) {
         set_channel_sel_pos(ret);
     }
 }
 
-// Channel settings menu: select channel or adjust extended effect count
+// Channel settings menu: select channel, toggle VRC7, or adjust effect columns.
 void channel_setting_page() {
     drawChessboard(0, 0, 128, 64);
-    static const char *options[2] = {"SELECT CHAN", "EXT EFX NUM"};
+    const char *options[3] = {"SELECT CHAN", ftm.vrc7_enabled() ? "VRC7 CHIP:ON" : "VRC7 CHIP:OFF", "EXT EFX NUM"};
     char title[16];
     snprintf(title, sizeof(title), "CHANNEL%d", channel_sel_pos);
-    int ret = menu(title, options, 2, nullptr, 64, 29);
+    int ret = menu(title, options, 3, nullptr, 64, 29);
     int tmp = ftm.he_block.ch_fx[channel_sel_pos];
     switch (ret) {
-        case 0:  // Select channel (brings up channel selection menu)
+        case 0:
             channel_sel_page();
             break;
-        case 1:  // Set number of effect columns for this channel
+        case 1:
+            ftm.set_vrc7_enabled(!ftm.vrc7_enabled());
+            player.reload();
+            set_channel_sel_pos(channel_sel_pos);
+            break;
+        case 2:
             drawChessboard(0, 0, 128, 64);
             num_set_menu_int("EXT EFX NUM", 0, 3, 1, &tmp, 0, 0, 64, 32);
             ftm.he_block.ch_fx[channel_sel_pos] = tmp;

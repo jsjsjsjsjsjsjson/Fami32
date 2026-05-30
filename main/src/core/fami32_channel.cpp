@@ -14,6 +14,42 @@ uint8_t clamp_apu_level(int32_t value, uint8_t max_value) {
     return (uint8_t)value;
 }
 
+bool is_noise_mode(WAVE_TYPE mode) {
+    return mode == NOISE0 || mode == NOISE1;
+}
+
+bool is_tone_mode(WAVE_TYPE mode) {
+    return mode < DPCM_SAMPLE;
+}
+
+const uint16_t VRC7_FREQ_TABLE[12] = {
+    172, 183, 194, 205, 217, 230, 244, 258, 274, 290, 307, 326
+};
+
+void note_to_vrc7_pitch(uint8_t fami32_note, uint16_t &fnum, uint8_t &block) {
+    /*
+     * Fami32 stores tracker notes as NES/MIDI-style notes where tracker C-0 is
+     * represented as MIDI note 24.  FamiTracker's VRC7 handler uses C-0 as
+     * note index 0 for the OPLL block/f-number table.
+     */
+    uint8_t opll_note = (fami32_note >= 24) ? (fami32_note - 24) : fami32_note;
+    fnum = VRC7_FREQ_TABLE[opll_note % 12];
+    block = opll_note / 12;
+    if (block > 7) {
+        block = 7;
+    }
+}
+
+void period_to_vrc7_pitch(float period, uint16_t &fnum, uint8_t &block) {
+    if (period < 0.0f) {
+        period = 0.0f;
+    }
+    uint8_t rounded_note = (uint8_t)period2note(period);
+    note_to_vrc7_pitch(rounded_note, fnum, block);
+}
+
+const uint8_t VRC7_DEFAULT_REGS[8] = {0x01, 0x21, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x0F};
+
 } // namespace
 
 void FAMI_CHANNEL::clear_all_fx_flag() {
@@ -24,10 +60,12 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
     period = 0;
     pos_count = 0;
 
-    if (mode < TRIANGULAR) {
+    if (mode == VRC7_FM) {
+        chl_mode = mode;
+    } else if (mode < TRIANGULAR) {
         mode = PULSE_125;
         chl_mode = mode;
-    } else if (mode > DPCM_SAMPLE) {
+    } else if (is_noise_mode(mode)) {
         mode = NOISE0;
         chl_mode = mode;
     }
@@ -83,6 +121,14 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
 
     if (mode == TRIANGULAR) {
         triangle_hold_level = 8;
+    }
+
+    if (mode == VRC7_FM) {
+        vrc7_gate = false;
+        vrc7_release = false;
+        vrc7_trigger = true;
+        vrc7_fnum = 0;
+        vrc7_block = 0;
     }
 
     last_note = 255;
@@ -234,9 +280,24 @@ void FAMI_CHANNEL::make_tick_sound() {
         tre_var = (vib_table[tre_pos] * tre_dep) / 32;
     }
 
+    if (mode == VRC7_FM) {
+        if (env_vol <= 0) {
+            env_vol = 15;
+        }
+        int32_t v = env_vol * (chl_vol + tre_var);
+        if (v < 0) v = 0;
+        if (v > 225) v = 225;
+        rel_vol = (uint8_t)v;
+        memset(tick_buf.data(), 0, tick_buf.size() * sizeof(int16_t));
+        uint8_t level = (rel_vol + 7) / 15;
+        if (level > 15) level = 15;
+        memset(apu_level_buf.data(), level, apu_level_buf.size() * sizeof(uint8_t));
+        return;
+    }
+
     rel_vol = env_vol * (chl_vol + tre_var);
 
-    if (mode < 5) {
+    if (is_tone_mode(mode)) {
         period_rely = period - period_offset;
         freq = period2freq(period_rely);
         pos_count = (freq / SAMP_RATE) * 32;
@@ -293,11 +354,11 @@ void FAMI_CHANNEL::make_tick_sound() {
             tick_buf[i] = clamp_i16(fir_apply_box8(pcm_fir_state));
             apu_level_buf[i] = clamp_apu_level((apu_acc + (oversample / 2)) / oversample, apu_max);
         }
-    } else if (mode > 5) {
+    } else if (is_noise_mode(mode)) {
         uint8_t nes_vol = (rel_vol + 7) / 15;
         if (nes_vol > 15) nes_vol = 15;
         for (int i = 0; i < tick_length; i++) {
-            int16_t noise_sample = nes_noise_get_sample(mode - 6);
+            int16_t noise_sample = nes_noise_get_sample(mode == NOISE1);
             tick_buf[i] = (noise_sample * rel_vol) >> 4;
             apu_level_buf[i] = noise_sample > 0 ? nes_vol : 0;
         }
@@ -356,14 +417,14 @@ void FAMI_CHANNEL::make_tick_sound() {
 void FAMI_CHANNEL::update_tick() {
     if (mode != DPCM_SAMPLE) {
         if (inst_proc.get_sequ_enable(PIT_SEQU) || inst_proc.get_sequ_enable(HPI_SEQU)) {
-            if (mode < 5) {
+            if (is_tone_mode(mode)) {
                 if (inst_proc.get_status(PIT_SEQU)) {
                     set_period(get_period() + (float)inst_proc.get_sequ_var(PIT_SEQU));
                 }
                 if (inst_proc.get_status(HPI_SEQU)) {
                     set_period(get_period() + (float)(inst_proc.get_sequ_var(HPI_SEQU) * 16));
                 }
-            } else if (mode > 5) {
+            } else if (is_noise_mode(mode)) {
                 // DBG_PRINTF("PIT: %d->%d\n", inst_proc.get_pos(PIT_SEQU), inst_proc.get_sequ_var(PIT_SEQU));
                 set_noise_rate((noise_rate_rel - inst_proc.get_sequ_var(PIT_SEQU)) & 15);
             }
@@ -371,9 +432,9 @@ void FAMI_CHANNEL::update_tick() {
 
         if (inst_proc.get_sequ_enable(ARP_SEQU)) {
             if (inst_proc.get_status(ARP_SEQU)) {
-                if (mode < 5) {
+                if (is_tone_mode(mode)) {
                     set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
-                } else if (mode > 5) {
+                } else if (is_noise_mode(mode)) {
                     // DBG_PRINTF("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
                     set_noise_rate_rel((noise_rate + inst_proc.get_sequ_var(ARP_SEQU)) & 15);
                 }
@@ -381,9 +442,9 @@ void FAMI_CHANNEL::update_tick() {
         }
 
         if (inst_proc.get_sequ_enable(DTY_SEQU)) {
-            if (mode < 4) {
+            if (mode < TRIANGULAR) {
                 set_mode((WAVE_TYPE)inst_proc.get_sequ_var(DTY_SEQU));
-            } else if (mode > 5) {
+            } else if (is_noise_mode(mode)) {
                 set_mode((WAVE_TYPE)(inst_proc.get_sequ_var(DTY_SEQU) & 1));
             }
         } else {
@@ -478,12 +539,15 @@ void FAMI_CHANNEL::update_tick() {
         }
     }
 
-    inst_proc.update_tick();
+    if (mode != VRC7_FM) {
+        inst_proc.update_tick();
+    }
 }
 
 void FAMI_CHANNEL::set_inst(int n) {
     // DBG_PRINTF("SET INST: %d\n", n);
     inst_proc.set_inst(n);
+    sync_vrc7_instrument();
 }
 
 instrument_t *FAMI_CHANNEL::get_inst() {
@@ -495,6 +559,13 @@ void FAMI_CHANNEL::note_start() {
         sample_fpos = 0;
         sample_pos = sample_start * 512;
         sample_status = (sample_num >= 0 && sample_pos < sample_len);
+    } else if (mode == VRC7_FM) {
+        sync_vrc7_instrument();
+        vrc7_gate = true;
+        vrc7_release = false;
+        vrc7_trigger = true;
+        portup_speed = 0;
+        portdown_speed = 0;
     } else {
         inst_proc.start();
         portup_speed = 0;
@@ -527,6 +598,10 @@ void FAMI_CHANNEL::note_end() {
     if (mode == DPCM_SAMPLE) {
         sample_var = dmc_hold_level;
         sample_status = false;
+    } else if (mode == VRC7_FM) {
+        vrc7_gate = false;
+        vrc7_release = true;
+        vrc7_trigger = true;
     } else {
         inst_proc.end();
     }
@@ -537,6 +612,12 @@ void FAMI_CHANNEL::note_cut() {
     if (mode == DPCM_SAMPLE) {
         sample_var = dmc_hold_level;
         sample_status = false;
+    } else if (mode == VRC7_FM) {
+        vrc7_gate = false;
+        vrc7_release = false;
+        vrc7_trigger = true;
+        portup_speed = false;
+        portdown_speed = false;
     } else {
         inst_proc.cut();
         portup_speed = false;
@@ -545,8 +626,11 @@ void FAMI_CHANNEL::note_cut() {
 }
 
 void FAMI_CHANNEL::set_period(float period_ref) {
-    if (mode > 5) {
+    if (is_noise_mode(mode)) {
         set_noise_rate((uint8_t)period_ref & 15);
+    } else if (mode == VRC7_FM) {
+        period = period_ref;
+        period_to_vrc7_pitch(period, vrc7_fnum, vrc7_block);
     } else {
         if (period_ref < 12) period_ref = 12.0f;
         else if (period_ref > 2048) period_ref = 2048.0f;
@@ -561,9 +645,13 @@ void FAMI_CHANNEL::set_freq(float freq_ref) {
 }
 
 void FAMI_CHANNEL::set_note_rely(uint8_t note) {
-    if (mode > 5) {
+    if (is_noise_mode(mode)) {
         set_noise_rate(note2noise(note));
-    } else if (mode < 5) {
+    } else if (mode == VRC7_FM) {
+        rely_note = note;
+        period = note2period(note);
+        note_to_vrc7_pitch(note, vrc7_fnum, vrc7_block);
+    } else if (is_tone_mode(mode)) {
         rely_note = note;
         period = note2period(note);
         pos_count = (freq / SAMP_RATE) * 32;
@@ -609,10 +697,12 @@ float FAMI_CHANNEL::get_period() {
 }
 
 float FAMI_CHANNEL::get_period_rel() {
-    if (mode < DPCM_SAMPLE)
+    if (is_tone_mode(mode))
         return period_rely;
-    else if (mode > DPCM_SAMPLE)
+    else if (is_noise_mode(mode))
         return get_noise_rate();
+    else if (mode == VRC7_FM)
+        return period;
     else
         return sample_num;
 }
@@ -652,7 +742,10 @@ bool FAMI_CHANNEL::get_dpcm_sample_status() {
 }
 
 void FAMI_CHANNEL::set_mode(WAVE_TYPE m) {
-    if (mode > DPCM_SAMPLE) {
+    if (mode == VRC7_FM || m == VRC7_FM) {
+        mode = VRC7_FM;
+        chl_mode = VRC7_FM;
+    } else if (is_noise_mode(mode)) {
         mode = (WAVE_TYPE)((m&1) + NOISE0);
         // DBG_PRINTF("SET_NOISE_MODE: %d\n", mode);
     } else if (mode != TRIANGULAR) {
@@ -662,7 +755,10 @@ void FAMI_CHANNEL::set_mode(WAVE_TYPE m) {
 }
 
 void FAMI_CHANNEL::set_chl_mode(WAVE_TYPE m) {
-    if (mode > DPCM_SAMPLE) {
+    if (m == VRC7_FM || mode == VRC7_FM) {
+        chl_mode = VRC7_FM;
+        mode = VRC7_FM;
+    } else if (is_noise_mode(mode)) {
         chl_mode = (WAVE_TYPE)((m&1) + NOISE0);
         DBG_PRINTF("SET_NOISE_MODE(CHL): %d\n", chl_mode);
     } else if (mode != TRIANGULAR) {
@@ -672,6 +768,68 @@ void FAMI_CHANNEL::set_chl_mode(WAVE_TYPE m) {
 
 WAVE_TYPE FAMI_CHANNEL::get_mode() {
     return mode;
+}
+
+void FAMI_CHANNEL::sync_vrc7_instrument() {
+    if (mode != VRC7_FM) {
+        return;
+    }
+
+    instrument_t *inst = inst_proc.get_inst();
+    if (inst != NULL && inst->type == INST_VRC7) {
+        vrc7_patch = inst->vrc7_patch & 0x0F;
+        memcpy(vrc7_regs, inst->vrc7_regs, sizeof(vrc7_regs));
+    } else {
+        vrc7_patch = 0;
+        memcpy(vrc7_regs, VRC7_DEFAULT_REGS, sizeof(vrc7_regs));
+    }
+}
+
+void FAMI_CHANNEL::set_vrc7_channel(uint8_t n) {
+    vrc7_channel_index = n % FAMI32_VRC7_CHANNELS;
+}
+
+uint8_t FAMI_CHANNEL::get_vrc7_channel() const {
+    return vrc7_channel_index;
+}
+
+bool FAMI_CHANNEL::is_vrc7_mode() const {
+    return mode == VRC7_FM;
+}
+
+bool FAMI_CHANNEL::get_vrc7_gate() const {
+    return vrc7_gate;
+}
+
+bool FAMI_CHANNEL::get_vrc7_release() const {
+    return vrc7_release;
+}
+
+bool FAMI_CHANNEL::consume_vrc7_trigger() {
+    bool out = vrc7_trigger;
+    vrc7_trigger = false;
+    return out;
+}
+
+uint8_t FAMI_CHANNEL::get_vrc7_patch() const {
+    return vrc7_patch & 0x0F;
+}
+
+uint8_t FAMI_CHANNEL::get_vrc7_reg(uint8_t reg) const {
+    return vrc7_regs[reg & 7];
+}
+
+uint16_t FAMI_CHANNEL::get_vrc7_fnum() const {
+    return vrc7_fnum;
+}
+
+uint8_t FAMI_CHANNEL::get_vrc7_block() const {
+    return vrc7_block & 7;
+}
+
+uint8_t FAMI_CHANNEL::get_vrc7_volume() const {
+    uint8_t volume = chl_vol > 15 ? 15 : chl_vol;
+    return 15 - volume;
 }
 
 void FAMI_CHANNEL::set_note(uint8_t note) {

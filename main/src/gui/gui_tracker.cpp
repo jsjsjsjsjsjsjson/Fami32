@@ -33,6 +33,23 @@ void clear_clipboard() {
     clipboard_data.clear();
 }
 
+static uint8_t tracker_visible_first_channel() {
+    uint8_t count = player.get_channel_count();
+    uint8_t visible = count < 5 ? count : 5;
+    if (count <= visible) return 0;
+
+    int first = channel_sel_pos - 2;
+    if (first < 0) first = 0;
+    int max_first = count - visible;
+    if (first > max_first) first = max_first;
+    return first;
+}
+
+static uint8_t tracker_visible_channel_count() {
+    uint8_t count = player.get_channel_count();
+    return count < 5 ? count : 5;
+}
+
 void clipboard_page() {
     const char *menu_str[2] = {"COPY", "PASTE"};
     int ret = menu("CLIPBOARD", menu_str, 2, NULL, 64, 29, 0, 0, 0);
@@ -82,18 +99,28 @@ void tracker_menu() {
         display.clearDisplay();
         display.setCursor(2, 0);
         display.print("R");
-        display.setCursor(14, 0);
-        display.print("PU1   PU2   TRI   NOS   DMC");
+        uint8_t first_ch = tracker_visible_first_channel();
+        uint8_t visible_ch = tracker_visible_channel_count();
+        for (uint8_t d = 0; d < visible_ch; ++d) {
+            uint8_t c = first_ch + d;
+            display.setCursor(14 + (d * 24), 0);
+            if (c < 5) {
+                static const char *base_short[5] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
+                display.print(base_short[c]);
+            } else {
+                display.printf("FM%d", c - FAMI32_VRC7_FIRST_CHANNEL + 1);
+            }
+        }
         display.drawFastHLine(0, 6, 128, 1);
         display.setCursor(0, 11);
         display.drawFastHLine(0, 10, 128, 1);
         drawChessboard(0, 7, 7, 3);
-        // drawChessboard(8, 7, 23, 3);
-        for (int c = 0; c < 5; c++) {
+        for (uint8_t d = 0; d < visible_ch; d++) {
+            uint8_t c = first_ch + d;
             if (player.get_mute(c))
-                drawChessboard((c * 24) + 8, 7, 23, 3);
+                drawChessboard((d * 24) + 8, 7, 23, 3);
 
-            display.fillRect((c * 24) + 8, 7, roundf(player.channel[c].get_rel_vol() * (23.0f/225.0f)), 3, 1);
+            display.fillRect((d * 24) + 8, 7, roundf(player.channel[c].get_rel_vol() * (23.0f/225.0f)), 3, 1);
         }
         for (int r = -4; r < 5; r++) {
             if (r) {
@@ -107,10 +134,11 @@ void tracker_menu() {
                 display.setCursor(display.getCursorX() - 2, display.getCursorY());
                 if (copy_mode) {
                     if (((player.get_row() + r) >= copy_start) && (r <= 0)) {
-                        drawChessboard((channel_sel_pos * 24) + 8, display.getCursorY(), 23, 6);
+                        drawChessboard(((channel_sel_pos - first_ch) * 24) + 8, display.getCursorY(), 23, 6);
                     }
                 }
-                for (int i = 0; i < 5; i++) {
+                for (uint8_t d = 0; d < visible_ch; d++) {
+                    uint8_t i = first_ch + d;
                     unpk_item_t pt_tmp = ftm.get_pt_item(i, player.get_cur_frame_map(i), player.get_row() + r);
                     if (pt_tmp.note != NO_NOTE) {
                         if (pt_tmp.note == NOTE_CUT)
@@ -136,13 +164,14 @@ void tracker_menu() {
             display.printf("\n");
         }
         display.drawFastVLine(7, 0, 64, 1);
-        for (int i = 0; i < 5; i++) {
-            display.drawFastVLine((i * 24) + 31, 0, 64, 1);
+        for (uint8_t d = 0; d < visible_ch; d++) {
+            uint8_t i = first_ch + d;
+            display.drawFastVLine((d * 24) + 31, 0, 64, 1);
             if (i == channel_sel_pos) {
-                display.setCursor((i * 24) + 9, 0);
+                display.setCursor((d * 24) + 9, 0);
                 display.print(">");
                 if (edit_mode) {
-                    invertRect((i * 24) + 8, 0, 23, 6);
+                    invertRect((d * 24) + 8, 0, 23, 6);
                 }
             }
         }

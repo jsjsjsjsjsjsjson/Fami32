@@ -11,6 +11,8 @@ set(AUDIO_SOURCES
     src/audio/note2freq.c
     src/audio/src_config.c
     src/audio/wave_table.c
+    src/audio/emu2413.c
+    src/audio/vrc7_synth.cpp
 )
 
 set(CONFIG_SOURCES

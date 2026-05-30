@@ -3,6 +3,23 @@
 #include "gui_input.h"     // for set_channel_sel_pos()
 #include "gui_tracker.h"   // for menu_navi(), main_option_page() (called within frames_menu)
 
+static uint8_t frames_visible_first_channel() {
+    uint8_t count = player.get_channel_count();
+    uint8_t visible = count < 5 ? count : 5;
+    if (count <= visible) return 0;
+
+    int first = channel_sel_pos - 2;
+    if (first < 0) first = 0;
+    int max_first = count - visible;
+    if (first > max_first) first = max_first;
+    return first;
+}
+
+static uint8_t frames_visible_channel_count() {
+    uint8_t count = player.get_channel_count();
+    return count < 5 ? count : 5;
+}
+
 void frames_option_page() {
     drawChessboard(0, 0, 128, 64);
     static const char *menu_str[5] = {"PUSH NEW", "INSERT NEW", "MOVE UP", "MOVE DOWN", "REMOVE"};
@@ -48,8 +65,10 @@ void frames_menu() {
         display.setFont(&font4x6);
         display.printf("(%02X/%02lX)", player.get_frame(), ftm.fr_block.frame_num - 1);
 
+        uint8_t first_ch = frames_visible_first_channel();
+        uint8_t visible_ch = frames_visible_channel_count();
         int tol_vol = 0;
-        for (int i = 0; i < 5; i++) {
+        for (uint8_t i = 0; i < player.get_channel_count(); i++) {
             tol_vol += player.channel[i].get_rel_vol();
         }
         display.drawFastHLine(0, 9, tol_vol / 8, 1);
@@ -69,7 +88,8 @@ void frames_menu() {
                 display.printf("%02X", player.get_frame() + f);
                 display.setCursor(display.getCursorX() + 3, display.getCursorY());
                 display.setFont(&rismol57);
-                for (int c = 0; c < 5; c++) {
+                for (uint8_t d = 0; d < visible_ch; d++) {
+                    uint8_t c = first_ch + d;
                     display.printf("%02X", ftm.get_frame_map(player.get_frame() + f, c));
                     display.setCursor(display.getCursorX() + 3, display.getCursorY());
                 }
@@ -84,7 +104,7 @@ void frames_menu() {
         display.drawFastVLine(91, 10, 54, 1);
         display.drawFastVLine(92, 10, 54, 1);
 
-        invertRect(15 + (channel_sel_pos * 15), 33, 13, 9);
+        invertRect(15 + ((channel_sel_pos - first_ch) * 15), 33, 13, 9);
 
         display.setFont(&rismol35);
 

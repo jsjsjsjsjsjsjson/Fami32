@@ -12,12 +12,13 @@ note_io_event_t note_io_event_from_input(const touch_input_event_t &e) {
     return event;
 }
 
-// Change selected channel (wrap around 0-4 for 5 channels total)
+// Change selected channel, wrapping over the active 2A03/VRC7 channel layout.
 void set_channel_sel_pos(int8_t p) {
-    if (p > 4) {
+    int8_t max_channel = player.get_channel_count() - 1;
+    if (p > max_channel) {
         p = 0;
     } else if (p < 0) {
-        p = 4;
+        p = max_channel;
     }
     channel_sel_pos = p;
     // If in edit mode, ensure the player uses the currently selected instrument on the new channel

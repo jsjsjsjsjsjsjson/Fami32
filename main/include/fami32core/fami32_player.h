@@ -3,6 +3,7 @@
 
 #include "fami32_common.h"
 #include "fami32_channel.h"
+#include "vrc7_synth.h"
 #include "src_config.h"
 
 class FAMI_PLAYER {
@@ -22,19 +23,20 @@ private:
 
     std::vector<int16_t> buf;
 
-    uint8_t delay_count[5] = {0, 0, 0, 0, 0};
-    bool delay_status[5] = {0, 0, 0, 0, 0};
+    uint8_t delay_count[FAMI32_MAX_CHANNELS] = {0};
+    bool delay_status[FAMI32_MAX_CHANNELS] = {0};
 
-    unpk_item_t ft_items[5];
+    unpk_item_t ft_items[FAMI32_MAX_CHANNELS];
 
     LowPassFilter lpf;
     HighPassFilter hpf;
 
     bool play_status = false;
 
-    bool mute[5] = {false, false, false, false, false};
+    bool mute[FAMI32_MAX_CHANNELS] = {false};
+    VRC7_SYNTH vrc7;
 public:
-    FAMI_CHANNEL channel[5];
+    FAMI_CHANNEL channel[FAMI32_MAX_CHANNELS];
 
     void init(FTM_FILE* data);
 
@@ -76,9 +78,12 @@ public:
     bool get_play_status();
     void set_mute(int c, bool s);
     bool get_mute(int c);
+    uint32_t get_channel_count() const;
 
 private:
     void recalculate_ticks_row();
+    void setup_channel_modes();
+    void sync_vrc7_registers();
 };
 
 #endif

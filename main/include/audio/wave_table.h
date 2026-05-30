@@ -14,6 +14,7 @@ typedef enum {
     DPCM_SAMPLE,
     NOISE0,
     NOISE1,
+    VRC7_FM,
 } WAVE_TYPE;
 
 const int8_t wave_table[5][32] = {

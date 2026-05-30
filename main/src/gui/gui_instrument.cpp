@@ -36,9 +36,9 @@ const char *random_name[177] = {
 };
 
 void instrument_option_page() {
-    static const char *menu_str[4] = {"NEW", "RENAME", "RAND NAME", "REMOVE"};
+    const char *menu_str[5] = {"NEW", "RENAME", "RAND NAME", ftm.get_inst(inst_sel_pos)->type == INST_VRC7 ? "TYPE:VRC7" : "TYPE:2A03", "REMOVE"};
     srand(time(NULL));
-    int ret = menu("INSTRUMENT", menu_str, 4, NULL, 60, 45, 0, 0, 0);
+    int ret = menu("INSTRUMENT", menu_str, 5, NULL, 60, 45, 0, 0, 0);
     switch (ret)
     {
     case 0:
@@ -56,6 +56,15 @@ void instrument_option_page() {
         break;
 
     case 3:
+        ftm.set_inst_type(inst_sel_pos, ftm.get_inst(inst_sel_pos)->type == INST_VRC7 ? INST_2A03 : INST_VRC7);
+        if (ftm.get_inst(inst_sel_pos)->type == INST_VRC7 && !ftm.vrc7_enabled()) {
+            ftm.set_vrc7_enabled(true);
+            player.reload();
+        }
+        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+        break;
+
+    case 4:
         ftm.remove_inst(inst_sel_pos);
         break;
     
@@ -116,11 +125,16 @@ void instrument_menu() {
                 display.printf("%02lX>%s", ftm.get_inst(i)->index, ftm.get_inst(i)->name);
             }
 
-            for (int f = 0; f < 5; f++) {
-                if (i == inst_sel_pos)
-                    display.drawBitmap(88 + (f * 8), itemYPos + 1, fami32_icon[f], 7, 7, !ftm.get_inst(i)->seq_index[f].enable);
-                else
-                    display.drawBitmap(88 + (f * 8), itemYPos + 1, fami32_icon[f], 7, 7, ftm.get_inst(i)->seq_index[f].enable);
+            if (ftm.get_inst(i)->type == INST_VRC7) {
+                display.setCursor(88, itemYPos + 2);
+                display.printf("V7 P%02lX", ftm.get_inst(i)->vrc7_patch & 0x0F);
+            } else {
+                for (int f = 0; f < 5; f++) {
+                    if (i == inst_sel_pos)
+                        display.drawBitmap(88 + (f * 8), itemYPos + 1, fami32_icon[f], 7, 7, !ftm.get_inst(i)->seq_index[f].enable);
+                    else
+                        display.drawBitmap(88 + (f * 8), itemYPos + 1, fami32_icon[f], 7, 7, ftm.get_inst(i)->seq_index[f].enable);
+                }
             }
         }
         display.setTextColor(1);
@@ -135,7 +149,9 @@ void instrument_menu() {
         if (channel_sel_pos == 3)
             display.drawFastVLine(63 + (player.channel[3].get_noise_rate() * 4), 58, 6, 1);
         else if (channel_sel_pos == 4) 
-            display.drawFastVLine(63 + (player.channel[4].get_samp_pos() * (64.0f / (float)player.channel[4].get_samp_len())), 58, 6, 1);
+            display.drawFastVLine(63 + (player.channel[4].get_samp_len() ? player.channel[4].get_samp_pos() * (64.0f / (float)player.channel[4].get_samp_len()) : 0), 58, 6, 1);
+        else if (ftm.is_vrc7_channel(channel_sel_pos))
+            display.drawFastVLine(63 + roundf(period2note(player.channel[channel_sel_pos].get_period_rel()) * 0.5f), 58, 6, 1);
         else
             display.drawFastVLine(63 + roundf(period2note(player.channel[channel_sel_pos].get_period_rel()) * 0.5f), 58, 6, 1);
 
@@ -267,7 +283,100 @@ void quick_gen_sequ(sequences_t *sequ, uint32_t type, uint32_t index) {
     }
 }
 
+void vrc7_instrument_editor(instrument_t *inst) {
+    if (inst == NULL) return;
+    int sel = 0;
+
+    for (;;) {
+        display.clearDisplay();
+        display.fillRect(0, 0, 128, 9, 1);
+        display.setTextColor(0);
+        display.setCursor(1, 1);
+        display.setFont(&rismol57);
+        display.printf("VRC7 %.12s", inst->name);
+
+        display.setFont(&rismol35);
+        display.setTextColor(1);
+        display.drawFastHLine(0, 10, 128, 1);
+
+        display.setCursor(2, 14);
+        if (sel == 0) display.fillRect(0, 13, 64, 7, 1), display.setTextColor(0);
+        display.printf("PATCH:%02lX", inst->vrc7_patch & 0x0F);
+        display.setTextColor(1);
+
+        for (uint8_t r = 0; r < 8; ++r) {
+            uint8_t row = r / 2;
+            uint8_t col = r & 1;
+            uint8_t x = col ? 64 : 2;
+            uint8_t y = 24 + row * 8;
+            if (sel == r + 1) {
+                display.fillRect(x - 2, y - 1, 60, 7, 1);
+                display.setTextColor(0);
+            } else {
+                display.setTextColor(1);
+            }
+            display.setCursor(x, y);
+            display.printf("R%d:%02X", r, inst->vrc7_regs[r]);
+        }
+
+        display.setTextColor(1);
+        display.setCursor(0, 58);
+        display.print("OK TYPE BACK EXIT");
+        display.display();
+
+        if (keypad.available()) {
+            keypadEvent e = keypad.read();
+            if (e.bit.EVENT == KEY_JUST_PRESSED) {
+                if (e.bit.KEY == KEY_BACK) {
+                    return;
+                } else if (e.bit.KEY == KEY_MENU || e.bit.KEY == KEY_OK) {
+                    ftm.set_inst_type(inst_sel_pos, INST_2A03);
+                    return;
+                } else if (e.bit.KEY == KEY_L) {
+                    sel--;
+                    if (sel < 0) sel = 8;
+                } else if (e.bit.KEY == KEY_R) {
+                    sel++;
+                    if (sel > 8) sel = 0;
+                } else if (e.bit.KEY == KEY_UP) {
+                    sel -= 2;
+                    if (sel < 0) sel += 9;
+                } else if (e.bit.KEY == KEY_DOWN) {
+                    sel += 2;
+                    if (sel > 8) sel -= 9;
+                } else if (e.bit.KEY == KEY_P) {
+                    if (sel == 0) {
+                        inst->vrc7_patch = (inst->vrc7_patch + 1) & 0x0F;
+                    } else {
+                        inst->vrc7_regs[sel - 1]++;
+                    }
+                    player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                } else if (e.bit.KEY == KEY_S) {
+                    if (sel == 0) {
+                        inst->vrc7_patch = (inst->vrc7_patch - 1) & 0x0F;
+                    } else {
+                        inst->vrc7_regs[sel - 1]--;
+                    }
+                    player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                }
+            }
+        }
+
+        touch_input_event_t touch_event;
+        if (touch_input_pop_event(&touch_event)) {
+            process_note_io_event(note_io_event_from_input(touch_event));
+        }
+
+        vTaskDelay(4);
+    }
+}
+
 void sequence_editor(instrument_t *inst) {
+    if (inst != NULL && inst->type == INST_VRC7) {
+        vrc7_instrument_editor(inst);
+        return;
+    }
+
     int sequ_type = 0;
 
     int sequ_sel_index = 0;

@@ -57,6 +57,37 @@ uint32_t normalized_dpcm_size(uint32_t size) {
     return padded;
 }
 
+uint32_t channel_count_for_ext(uint8_t ext_chip) {
+    uint32_t channels = FAMI32_BASE_CHANNELS;
+    if (ext_chip & FTM_EXT_VRC7) {
+        channels += FAMI32_VRC7_CHANNELS;
+    }
+    return channels;
+}
+
+void fill_channel_layout(HEADER_BLOCK &header, uint8_t ext_chip) {
+    memset(header.ch_id, 0, sizeof(header.ch_id));
+
+    header.ch_id[0] = 0;
+    header.ch_id[1] = 1;
+    header.ch_id[2] = 2;
+    header.ch_id[3] = 3;
+    header.ch_id[4] = 4;
+
+    if (ext_chip & FTM_EXT_VRC7) {
+        for (uint8_t i = 0; i < FAMI32_VRC7_CHANNELS; ++i) {
+            header.ch_id[FAMI32_VRC7_FIRST_CHANNEL + i] = 20 + i;
+        }
+    }
+}
+
+uint32_t instrument_payload_size(const instrument_t &inst) {
+    if (inst.type == INST_VRC7) {
+        return 4 + 8;
+    }
+    return 4 + (2 * FTM_SEQUENCE_TYPES) + (3 * FTM_DPCM_NOTES);
+}
+
 } // namespace
 
 FTM_FILE::FTM_FILE() {
@@ -85,6 +116,7 @@ void FTM_FILE::new_ftm() {
     fr_block = fr_new;
     pt_block = pt_new;
     dpcm_block = dpcm_new;
+    fill_channel_layout(he_block, pr_block.ext_chip);
 
     frames.clear();
     new_frame();
@@ -107,7 +139,7 @@ void FTM_FILE::new_ftm() {
     dpcm_samples.clear();
     instrument.clear();
     sequences.clear();
-    sequences.resize(5);
+    sequences.resize(FTM_SEQUENCE_TYPES);
     create_new_inst();
 }
 
@@ -115,7 +147,7 @@ void FTM_FILE::create_new_inst() {
     if (instrument.empty()) {
         instrument.emplace_back();
         instrument[0].index = 0;
-        for (int i = 0; i < 5; ++i) {
+        for (uint32_t i = 0; i < FTM_SEQUENCE_TYPES; ++i) {
             instrument[0].seq_index[i].seq_index = sequences[i].size();
         }
         inst_block.inst_num = instrument.size();
@@ -141,7 +173,7 @@ void FTM_FILE::create_new_inst() {
         instrument.back().index = new_index;
     }
 
-    for (int i = 0; i < 5; ++i) {
+    for (uint32_t i = 0; i < FTM_SEQUENCE_TYPES; ++i) {
         instrument[new_index].seq_index[i].seq_index = sequences[i].size();
     }
 
@@ -154,6 +186,106 @@ void FTM_FILE::remove_inst(int n) {
         create_new_inst();
     }
     inst_block.inst_num = instrument.size();
+}
+
+void FTM_FILE::set_inst_type(int n, uint8_t type) {
+    instrument_t *inst = get_inst(n);
+    if (inst == NULL) {
+        return;
+    }
+
+    if (type == INST_VRC7) {
+        inst->type = INST_VRC7;
+        inst->seq_count = 0;
+        if (inst->vrc7_patch > 15) {
+            inst->vrc7_patch = 0;
+        }
+    } else {
+        inst->type = INST_2A03;
+        inst->seq_count = FTM_SEQUENCE_TYPES;
+        for (uint32_t i = 0; i < FTM_SEQUENCE_TYPES; ++i) {
+            if (inst->seq_index[i].seq_index >= sequences[i].size()) {
+                inst->seq_index[i].seq_index = sequences[i].size();
+            }
+        }
+    }
+}
+
+uint32_t FTM_FILE::get_channel_count() const {
+    return pr_block.channel;
+}
+
+bool FTM_FILE::vrc7_enabled() const {
+    return (pr_block.ext_chip & FTM_EXT_VRC7) != 0;
+}
+
+bool FTM_FILE::is_vrc7_channel(int c) const {
+    return vrc7_enabled() && c >= FAMI32_VRC7_FIRST_CHANNEL && c < FAMI32_VRC7_FIRST_CHANNEL + FAMI32_VRC7_CHANNELS;
+}
+
+void FTM_FILE::set_vrc7_enabled(bool enabled) {
+    if (enabled) {
+        pr_block.ext_chip |= FTM_EXT_VRC7;
+    } else {
+        pr_block.ext_chip &= ~FTM_EXT_VRC7;
+    }
+    apply_channel_layout();
+}
+
+void FTM_FILE::apply_channel_layout() {
+    uint32_t new_count = channel_count_for_ext(pr_block.ext_chip);
+    if (new_count > FAMI32_MAX_CHANNELS) {
+        new_count = FAMI32_MAX_CHANNELS;
+    }
+    resize_channel_storage(new_count);
+    fill_channel_layout(he_block, pr_block.ext_chip);
+}
+
+void FTM_FILE::resize_channel_storage(uint32_t new_count) {
+    if (new_count < FAMI32_BASE_CHANNELS) {
+        new_count = FAMI32_BASE_CHANNELS;
+    }
+    if (new_count > FAMI32_MAX_CHANNELS) {
+        new_count = FAMI32_MAX_CHANNELS;
+    }
+
+    uint32_t old_count = pr_block.channel;
+    pr_block.channel = new_count;
+
+    for (size_t f = 0; f < frames.size(); ++f) {
+        uint8_t default_pattern = static_cast<uint8_t>(f & 0xFF);
+        frames[f].resize(new_count, default_pattern);
+    }
+
+    patterns.resize(new_count);
+    unpack_pt.resize(new_count);
+
+    for (uint32_t c = 0; c < new_count; ++c) {
+        if (patterns[c].empty()) {
+            patterns[c].resize(1);
+        }
+        if (unpack_pt[c].empty()) {
+            unpack_pt[c].resize(1);
+        }
+
+        uint32_t max_pattern = 0;
+        for (size_t f = 0; f < frames.size(); ++f) {
+            if (c < frames[f].size() && frames[f][c] > max_pattern) {
+                max_pattern = frames[f][c];
+            }
+        }
+        if (unpack_pt[c].size() <= max_pattern) {
+            unpack_pt[c].resize(max_pattern + 1);
+        }
+        for (size_t p = 0; p < unpack_pt[c].size(); ++p) {
+            unpack_pt[c][p].resize(fr_block.pat_length);
+        }
+    }
+
+    if (new_count < old_count) {
+        patterns.resize(new_count);
+        unpack_pt.resize(new_count);
+    }
 }
 
 int FTM_FILE::open_ftm(const char *filename) {
@@ -237,8 +369,20 @@ void FTM_FILE::write_param_block() {
 int FTM_FILE::read_param_block() {
     fread(&pr_block, 1, sizeof(pr_block), ftm_file);
 
-    if (pr_block.ext_chip != 0) {
-        DBG_PRINTF("Multi-Chip FTM files are not supported\n");
+    if (pr_block.ext_chip & ~FTM_EXT_VRC7) {
+        DBG_PRINTF("Only 2A03 and VRC7 FTM files are supported\n");
+        return NO_SUPPORT_EXTCHIP;
+    }
+
+    uint32_t expected_channels = channel_count_for_ext(pr_block.ext_chip);
+    if (expected_channels > FAMI32_MAX_CHANNELS) {
+        return NO_SUPPORT_EXTCHIP;
+    }
+    if (pr_block.channel < expected_channels) {
+        pr_block.channel = expected_channels;
+    }
+    if (pr_block.channel > FAMI32_MAX_CHANNELS) {
+        DBG_PRINTF("Too many channels in FTM file: %ld\n", pr_block.channel);
         return NO_SUPPORT_EXTCHIP;
     }
 
@@ -286,10 +430,11 @@ int FTM_FILE::read_header_block() {
         return NO_SUPPORT_MULTITRACK;
     }
 
-    for (int i = 0; i < pr_block.channel; i++) {
+    for (uint32_t i = 0; i < pr_block.channel; i++) {
         fread(&he_block.ch_id[i], 1, 1, ftm_file);
         fread(&he_block.ch_fx[i], 1, 1, ftm_file);
     }
+    apply_channel_layout();
 
     DBG_PRINTF("\nMETADATA HEADER: %s\n", he_block.id);
     DBG_PRINTF("VERSION: %ld\n", he_block.version);
@@ -332,7 +477,7 @@ void FTM_FILE::write_instrument_block() {
             continue;
         }
         valid_count++;
-        tol_size += 311 + instrument_name_length(instrument[i]);
+        tol_size += 4 + 1 + instrument_payload_size(instrument[i]) + 4 + instrument_name_length(instrument[i]);
     }
     inst_block.inst_num = valid_count;
     inst_block.size = static_cast<uint32_t>(tol_size);
@@ -342,36 +487,52 @@ void FTM_FILE::write_instrument_block() {
 void FTM_FILE::read_instrument_data() {
     instrument.clear();
     DBG_PRINTF("\nREADING INSTRUMENT, COUNT=%ld\n", inst_block.inst_num);
-    for (int i = 0; i < inst_block.inst_num; i++) {
+    for (uint32_t i = 0; i < inst_block.inst_num; i++) {
         instrument_t inst_tmp;
-        DBG_PRINTF("\nREADING INSTRUMENT #%02X...\n", i);
+        DBG_PRINTF("\nREADING INSTRUMENT #%02lX...\n", (unsigned long)i);
+
         uint32_t u32_value = 0;
         uint8_t u8_value = 0;
-        read_u32(ftm_file, &u32_value);
+
+        if (!read_u32(ftm_file, &u32_value)) {
+            break;
+        }
         inst_tmp.index = u32_value;
         read_u8(ftm_file, &u8_value);
         inst_tmp.type = u8_value;
-        read_u32(ftm_file, &u32_value);
-        inst_tmp.seq_count = u32_value;
-        if (inst_tmp.seq_count > FTM_SEQUENCE_TYPES) {
-            inst_tmp.seq_count = FTM_SEQUENCE_TYPES;
+
+        if (inst_tmp.type == INST_VRC7) {
+            read_u32(ftm_file, &u32_value);
+            inst_tmp.vrc7_patch = u32_value & 0x0F;
+            for (uint8_t r = 0; r < 8; ++r) {
+                read_u8(ftm_file, &inst_tmp.vrc7_regs[r]);
+            }
+            inst_tmp.seq_count = 0;
+        } else {
+            inst_tmp.type = INST_2A03;
+            read_u32(ftm_file, &u32_value);
+            inst_tmp.seq_count = u32_value;
+            if (inst_tmp.seq_count > FTM_SEQUENCE_TYPES) {
+                inst_tmp.seq_count = FTM_SEQUENCE_TYPES;
+            }
+            for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
+                uint8_t enable = 0;
+                uint8_t index = 0;
+                read_u8(ftm_file, &enable);
+                read_u8(ftm_file, &index);
+                inst_tmp.seq_index[seq].enable = enable != 0;
+                inst_tmp.seq_index[seq].seq_index = index;
+            }
+            for (uint32_t note = 0; note < FTM_DPCM_NOTES; ++note) {
+                uint8_t pitch = 0;
+                read_u8(ftm_file, &inst_tmp.dpcm[note].index);
+                read_u8(ftm_file, &pitch);
+                read_u8(ftm_file, &inst_tmp.dpcm[note].d_counte);
+                inst_tmp.dpcm[note].pitch = pitch & 0x0F;
+                inst_tmp.dpcm[note].loop = (pitch & 0x80) ? 8 : 0;
+            }
         }
-        for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
-            uint8_t enable = 0;
-            uint8_t index = 0;
-            read_u8(ftm_file, &enable);
-            read_u8(ftm_file, &index);
-            inst_tmp.seq_index[seq].enable = enable != 0;
-            inst_tmp.seq_index[seq].seq_index = index;
-        }
-        for (uint32_t note = 0; note < FTM_DPCM_NOTES; ++note) {
-            uint8_t pitch = 0;
-            read_u8(ftm_file, &inst_tmp.dpcm[note].index);
-            read_u8(ftm_file, &pitch);
-            read_u8(ftm_file, &inst_tmp.dpcm[note].d_counte);
-            inst_tmp.dpcm[note].pitch = pitch & 0x0F;
-            inst_tmp.dpcm[note].loop = (pitch & 0x80) ? 8 : 0;
-        }
+
         read_u32(ftm_file, &u32_value);
         inst_tmp.name_len = u32_value;
         uint32_t copy_len = inst_tmp.name_len < sizeof(inst_tmp.name) - 1 ? inst_tmp.name_len : sizeof(inst_tmp.name) - 1;
@@ -381,22 +542,19 @@ void FTM_FILE::read_instrument_data() {
             fseek(ftm_file, inst_tmp.name_len - copy_len, SEEK_CUR);
         }
         inst_tmp.name_len = copy_len;
+
         DBG_PRINTF("%02lX->NAME: %s\n", inst_tmp.index, inst_tmp.name);
         DBG_PRINTF("TYPE: 0x%X\n", inst_tmp.type);
-        DBG_PRINTF("SEQU COUNT: %ld\n", inst_tmp.seq_count);
-        DBG_PRINTF("SEQU DATA:\n");
-        DBG_PRINTF("VOL: %d %d\n", inst_tmp.seq_index[0].enable, inst_tmp.seq_index[0].seq_index);
-        DBG_PRINTF("ARP: %d %d\n", inst_tmp.seq_index[1].enable, inst_tmp.seq_index[1].seq_index);
-        DBG_PRINTF("PIT: %d %d\n", inst_tmp.seq_index[2].enable, inst_tmp.seq_index[2].seq_index);
-        DBG_PRINTF("HIP: %d %d\n", inst_tmp.seq_index[3].enable, inst_tmp.seq_index[3].seq_index);
-        DBG_PRINTF("DTY: %d %d\n", inst_tmp.seq_index[4].enable, inst_tmp.seq_index[4].seq_index);
-        DBG_PRINTF("\n");
+        if (inst_tmp.type == INST_VRC7) {
+            DBG_PRINTF("VRC7 PATCH: %ld\n", inst_tmp.vrc7_patch);
+        } else {
+            DBG_PRINTF("SEQU COUNT: %ld\n", inst_tmp.seq_count);
+        }
+
         if (inst_tmp.index >= instrument.size()) {
             instrument.resize(inst_tmp.index + 1);
-            instrument[inst_tmp.index] = inst_tmp;
-        } else {
-            instrument[inst_tmp.index] = inst_tmp;
         }
+        instrument[inst_tmp.index] = inst_tmp;
     }
     inst_block.inst_num = instrument.size();
 }
@@ -407,21 +565,30 @@ void FTM_FILE::write_instrument_data() {
             continue;
         }
         instrument_t &inst = instrument[i];
-        inst.type = 1;
-        inst.seq_count = FTM_SEQUENCE_TYPES;
+        if (inst.type != INST_VRC7) {
+            inst.type = INST_2A03;
+            inst.seq_count = FTM_SEQUENCE_TYPES;
+        }
         instrument_name_length(inst);
 
         write_u32(ftm_file, inst.index);
         write_u8(ftm_file, inst.type);
-        write_u32(ftm_file, inst.seq_count);
-        for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
-            write_u8(ftm_file, inst.seq_index[seq].enable ? 1 : 0);
-            write_u8(ftm_file, inst.seq_index[seq].seq_index);
-        }
-        for (uint32_t note = 0; note < FTM_DPCM_NOTES; ++note) {
-            write_u8(ftm_file, inst.dpcm[note].index);
-            write_u8(ftm_file, make_dpcm_pitch_byte(inst.dpcm[note]));
-            write_u8(ftm_file, inst.dpcm[note].d_counte);
+        if (inst.type == INST_VRC7) {
+            write_u32(ftm_file, inst.vrc7_patch & 0x0F);
+            for (uint8_t r = 0; r < 8; ++r) {
+                write_u8(ftm_file, inst.vrc7_regs[r]);
+            }
+        } else {
+            write_u32(ftm_file, inst.seq_count);
+            for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
+                write_u8(ftm_file, inst.seq_index[seq].enable ? 1 : 0);
+                write_u8(ftm_file, inst.seq_index[seq].seq_index);
+            }
+            for (uint32_t note = 0; note < FTM_DPCM_NOTES; ++note) {
+                write_u8(ftm_file, inst.dpcm[note].index);
+                write_u8(ftm_file, make_dpcm_pitch_byte(inst.dpcm[note]));
+                write_u8(ftm_file, inst.dpcm[note].d_counte);
+            }
         }
         write_u32(ftm_file, inst.name_len);
         fwrite(inst.name, 1, inst.name_len, ftm_file);
@@ -450,7 +617,7 @@ void FTM_FILE::write_sequences() {
     fwrite(&seq_block, sizeof(seq_block), 1, ftm_file);
 
     size_t tol_size = 4;
-    for (int type = 0; type < 5; type++) {
+    for (uint32_t type = 0; type < FTM_SEQUENCE_TYPES; type++) {
         for (int i = 0; i < sequences[type].size(); i++) {
             if (sequences[type][i].length) {
                 sequences[type][i].type = type;
@@ -465,7 +632,7 @@ void FTM_FILE::write_sequences() {
             }
         }
     }
-    for (int type = 0; type < 5; type++) {
+    for (uint32_t type = 0; type < FTM_SEQUENCE_TYPES; type++) {
         for (int i = 0; i < sequences[type].size(); i++) {
             if (sequences[type][i].length) {
                 fwrite(&sequences[type][i].release, sizeof(uint32_t), 1, ftm_file);
@@ -487,8 +654,8 @@ void FTM_FILE::read_sequences_data() {
         return;
     }
     sequences.clear();
-    sequences.resize(5);
-    uint32_t index_map[seq_block.sequ_num][2];
+    sequences.resize(FTM_SEQUENCE_TYPES);
+    std::vector<std::vector<uint32_t>> index_map(seq_block.sequ_num, std::vector<uint32_t>(2, 0));
     DBG_PRINTF("\nREADING SEQUENCES, COUNT=%ld\n", seq_block.sequ_num);
     for (int i = 0; i < seq_block.sequ_num; i++) {
         sequences_t sequ_tmp;
@@ -507,14 +674,14 @@ void FTM_FILE::read_sequences_data() {
         for (int j = 0; j < sequ_tmp.length; j++) {
             DBG_PRINTF("%d ", sequ_tmp.data[j]);
         }
-        if (sequ_tmp.index >= sequences[sequ_tmp.type].size()) {
-            sequences[sequ_tmp.type].resize(sequ_tmp.index + 1);
+        if (sequ_tmp.type < FTM_SEQUENCE_TYPES) {
+            if (sequ_tmp.index >= sequences[sequ_tmp.type].size()) {
+                sequences[sequ_tmp.type].resize(sequ_tmp.index + 1);
+            }
             sequences[sequ_tmp.type][sequ_tmp.index] = sequ_tmp;
-        } else {
-            sequences[sequ_tmp.type][sequ_tmp.index] = sequ_tmp;
+            index_map[i][0] = sequ_tmp.type;
+            index_map[i][1] = sequ_tmp.index;
         }
-        index_map[i][0] = sequ_tmp.type;
-        index_map[i][1] = sequ_tmp.index;
         DBG_PRINTF("\n");
     }
     DBG_PRINTF("\nREADING SEQU SETTING...\n");
@@ -633,6 +800,9 @@ void FTM_FILE::read_pattern_data() {
         int item_size = 10 + 2 * he_block.ch_fx[pt_tmp.channel];
         for (int i = 0; i < pt_tmp.items; i++) {
             fread(&pt_tmp.item[i], 1, item_size, ftm_file);
+        }
+        if (pt_tmp.channel >= pr_block.channel) {
+            continue;
         }
         if (pt_tmp.index >= patterns[pt_tmp.channel].size()) {
             patterns[pt_tmp.channel].resize(pt_tmp.index + 1);
@@ -1022,15 +1192,17 @@ uint8_t FTM_FILE::get_sequ_release(int type, int index) {
 
 void FTM_FILE::new_frame() {
     uint8_t next_pt = frames.size();
-    std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
+    std::vector<uint8_t> next_fr(pr_block.channel, next_pt);
     frames.push_back(next_fr);
+    resize_channel_storage(pr_block.channel);
     fr_block.frame_num = frames.size();
 }
 
 void FTM_FILE::insert_new_frame(int n) {
     uint8_t next_pt = frames.size();
-    std::vector<uint8_t> next_fr{next_pt, next_pt, next_pt, next_pt, next_pt};
+    std::vector<uint8_t> next_fr(pr_block.channel, next_pt);
     frames.insert(frames.begin() + n, next_fr);
+    resize_channel_storage(pr_block.channel);
     fr_block.frame_num = frames.size();
 }
 

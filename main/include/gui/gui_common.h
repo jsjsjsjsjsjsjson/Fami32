@@ -56,7 +56,7 @@ extern const char *config_path;  // Path to configuration file for settings
 
 // Global data structures
 extern std::vector<unpk_item_t> clipboard_data;  // Clipboard for copied pattern data
-extern const char ch_name[5][10];                // Names of channels (for display)
+extern const char ch_name[FAMI32_MAX_CHANNELS][10];                // Names of channels (for display)
 
 // Common utility functions available to all modules
 void pause_sound();
