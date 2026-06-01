@@ -95,7 +95,7 @@ void keypad_task(void *arg) {
             touchKeypadEvent e = touchKeypad.read();
             touch_input_push_event(e.bit.KEY, e.bit.EVENT);
         }
-        vTaskDelay(1);
+        vTaskDelay(2);
     }
 }
 
@@ -104,7 +104,6 @@ esp_lcd_panel_handle_t oled_init(void)
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_handle_t panel_handle = NULL;
 
-    // 初始化 SPI 总线
     spi_bus_config_t buscfg = {
         .mosi_io_num = DISPLAY_SDA,
         .miso_io_num = -1,
@@ -118,7 +117,6 @@ esp_lcd_panel_handle_t oled_init(void)
         spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO)
     );
 
-    // 创建 panel IO (SPI)
     esp_lcd_panel_io_spi_config_t io_config = {
         .cs_gpio_num = DISPLAY_CS,
         .dc_gpio_num = DISPLAY_DC,
@@ -142,7 +140,6 @@ esp_lcd_panel_handle_t oled_init(void)
         )
     );
 
-    // 创建 SSD1306 panel
     esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = DISPLAY_RESET,
         .bits_per_pixel = 1,
@@ -156,11 +153,9 @@ esp_lcd_panel_handle_t oled_init(void)
         )
     );
 
-    // 初始化屏幕
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
 
-    // 开显示
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle, true, true));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
@@ -343,13 +338,13 @@ extern "C" void app_main(void) {
 
     while (!keypad.available()) {
         keypad.tick();
-        vTaskDelay(1);
+        vTaskDelay(2);
     }
     keypad.read();
 
     xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 1);
     touch_input_init();
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, &KEYPAD_TASK_HD, 0);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 5, &KEYPAD_TASK_HD, 0);
 
     MIDI.setCallback(midi_callback);
 
