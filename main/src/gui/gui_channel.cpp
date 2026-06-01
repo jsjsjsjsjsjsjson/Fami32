@@ -4,13 +4,39 @@
 #include "gui_instrument.h" // for instrument_menu (if needed)
 #include "gui_tracker.h"    // for menu_navi(), main_option_page()
 
+static const char *channel_display_name(uint8_t channel, char *buf, size_t len) {
+    if (ftm.is_fds_channel(channel)) {
+        return "FDS";
+    }
+    if (ftm.is_vrc7_channel(channel)) {
+        snprintf(buf, len, "VRC7-%u", (unsigned)(channel - ftm.vrc7_channel_index() + 1));
+        return buf;
+    }
+    if (ftm.is_vrc6_channel(channel)) {
+        int first = ftm.vrc6_channel_index();
+        if (channel == first + 2) {
+            snprintf(buf, len, "VRC6-SAW");
+        } else {
+            snprintf(buf, len, "VRC6-%u", (unsigned)(channel - first + 1));
+        }
+        return buf;
+    }
+    if (ftm.is_mmc5_channel(channel)) {
+        int first = ftm.mmc5_channel_index();
+        snprintf(buf, len, "MMC5-%u", (unsigned)(channel - first + 1));
+        return buf;
+    }
+    return ch_name[channel];
+}
+
 // Simple menu to select current channel.
 void channel_sel_page() {
     const char *chan_str[FAMI32_MAX_CHANNELS];
+    char chan_buf[FAMI32_MAX_CHANNELS][10];
     uint32_t count = player.get_channel_count();
     if (count > FAMI32_MAX_CHANNELS) count = FAMI32_MAX_CHANNELS;
     for (uint32_t i = 0; i < count; ++i) {
-        chan_str[i] = ch_name[i];
+        chan_str[i] = channel_display_name(i, chan_buf[i], sizeof(chan_buf[i]));
     }
     int ret = menu("CHANNEL", chan_str, count, nullptr, 64, 53, 0, 0, channel_sel_pos);
     if (ret != -1) {
@@ -21,26 +47,43 @@ void channel_sel_page() {
 // Channel settings menu: select channel, toggle VRC7, or adjust effect columns.
 void channel_setting_page() {
     drawChessboard(0, 0, 128, 64);
-    const char *options[4] = {"SELECT CHAN", ftm.vrc7_enabled() ? "VRC7 CHIP:ON" : "VRC7 CHIP:OFF", ftm.fds_enabled() ? "FDS CHIP:ON" : "FDS CHIP:OFF", "EXT EFX NUM"};
+    const char *options[6] = {
+        "SELECT CHAN",
+        ftm.vrc6_enabled() ? "VRC6 CHIP:ON" : "VRC6 CHIP:OFF",
+        ftm.vrc7_enabled() ? "VRC7 CHIP:ON" : "VRC7 CHIP:OFF",
+        ftm.mmc5_enabled() ? "MMC5 CHIP:ON" : "MMC5 CHIP:OFF",
+        ftm.fds_enabled() ? "FDS CHIP:ON" : "FDS CHIP:OFF",
+        "EXT EFX NUM"
+    };
     char title[16];
     snprintf(title, sizeof(title), "CHANNEL%d", channel_sel_pos);
-    int ret = menu(title, options, 4, nullptr, 72, 37);
+    int ret = menu(title, options, 6, nullptr, 72, 53);
     int tmp = ftm.he_block.ch_fx[channel_sel_pos];
     switch (ret) {
         case 0:
             channel_sel_page();
             break;
         case 1:
-            ftm.set_vrc7_enabled(!ftm.vrc7_enabled());
+            ftm.set_vrc6_enabled(!ftm.vrc6_enabled());
             player.reload();
             set_channel_sel_pos(channel_sel_pos);
             break;
         case 2:
-            ftm.set_fds_enabled(!ftm.fds_enabled());
+            ftm.set_vrc7_enabled(!ftm.vrc7_enabled());
             player.reload();
             set_channel_sel_pos(channel_sel_pos);
             break;
         case 3:
+            ftm.set_mmc5_enabled(!ftm.mmc5_enabled());
+            player.reload();
+            set_channel_sel_pos(channel_sel_pos);
+            break;
+        case 4:
+            ftm.set_fds_enabled(!ftm.fds_enabled());
+            player.reload();
+            set_channel_sel_pos(channel_sel_pos);
+            break;
+        case 5:
             drawChessboard(0, 0, 128, 64);
             num_set_menu_int("EXT EFX NUM", 0, 3, 1, &tmp, 0, 0, 64, 32);
             ftm.he_block.ch_fx[channel_sel_pos] = tmp;
@@ -87,13 +130,8 @@ void channel_menu() {
         display.setTextColor(0);
         display.setFont(&rismol57);
         display.setCursor(1, 1);
-        if (ftm.is_fds_channel(channel_sel_pos)) {
-            display.print("FDS ");
-        } else if (ftm.is_vrc7_channel(channel_sel_pos)) {
-            display.printf("VRC7-%u ", (unsigned)(channel_sel_pos - FAMI32_VRC7_FIRST_CHANNEL + 1));
-        } else {
-            display.printf("%s ", ch_name[channel_sel_pos]);
-        }
+        char chan_buf[10];
+        display.printf("%s ", channel_display_name(channel_sel_pos, chan_buf, sizeof(chan_buf)));
         display.setFont(&font4x6);
         display.printf("(CHAN%d)", channel_sel_pos);
 

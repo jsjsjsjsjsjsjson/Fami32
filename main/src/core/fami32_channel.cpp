@@ -22,6 +22,14 @@ bool is_tone_mode(WAVE_TYPE mode) {
     return mode < DPCM_SAMPLE;
 }
 
+bool is_vrc6_pulse_mode(WAVE_TYPE mode) {
+    return mode >= VRC6_PULSE_062 && mode <= VRC6_PULSE_500;
+}
+
+bool is_vrc6_mode(WAVE_TYPE mode) {
+    return is_vrc6_pulse_mode(mode) || mode == VRC6_SAW;
+}
+
 bool is_fds_mode(WAVE_TYPE mode) {
     return mode == FDS_WAVE;
 }
@@ -92,7 +100,7 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
     period = 0;
     pos_count = 0;
 
-    if (mode == VRC7_FM || mode == FDS_WAVE) {
+    if (mode == VRC7_FM || mode == FDS_WAVE || is_vrc6_mode(mode)) {
         chl_mode = mode;
     } else if (mode < TRIANGULAR) {
         mode = PULSE_125;
@@ -379,7 +387,69 @@ void FAMI_CHANNEL::make_tick_sound() {
         return;
     }
 
-    rel_vol = env_vol * (chl_vol + tre_var);
+    if (is_vrc6_mode(mode)) {
+        if (env_vol < 0) env_vol = 0;
+        if (env_vol > 15) env_vol = 15;
+        int32_t channel_volume = chl_vol + tre_var;
+        if (channel_volume < 0) channel_volume = 0;
+        if (channel_volume > 15) channel_volume = 15;
+
+        int32_t base_volume = env_vol * channel_volume;
+        rel_vol = (uint8_t)base_volume;
+
+        period_rely = period - period_offset;
+        if (vib_spd && vib_dep) {
+            vib_pos = (vib_pos + vib_spd) & 63;
+            int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
+            period_rely = get_period() + vib_var;
+        }
+        if (period_rely < 12.0f) period_rely = 12.0f;
+        if (period_rely > 4095.0f) period_rely = 4095.0f;
+        freq = period2freq(period_rely);
+        pos_count = (freq / SAMP_RATE) * 32.0f;
+        float rel_pos_count = pos_count / oversample;
+        uint8_t vrc6_meter = (rel_vol + 7) / 15;
+        if (vrc6_meter > 15) vrc6_meter = 15;
+
+        for (int i = 0; i < tick_length; i++) {
+            int32_t pcm_out = 0;
+            int32_t apu_acc = 0;
+            for (int j = 0; j < oversample; j++) {
+                int32_t pcm_sub = 0;
+                uint8_t apu_sub = 0;
+                if (rel_vol) {
+                    i_pos &= 31;
+                    int8_t wave = wave_table[mode][i_pos];
+                    pcm_sub = wave * rel_vol;
+                    apu_sub = (wave >= 0) ? vrc6_meter : 0;
+                    f_pos += rel_pos_count;
+                    if (f_pos >= 1.0f) {
+                        int step = (int)f_pos;
+                        i_pos += step;
+                        f_pos -= step;
+                    }
+                }
+                apu_acc += apu_sub;
+                fir_push(pcm_fir_state, pcm_sub);
+                if (j == oversample - 1) {
+                    pcm_out = fir_apply(pcm_fir_state);
+                }
+            }
+            tick_buf[i] = clamp_i16(pcm_out);
+            apu_level_buf[i] = clamp_apu_level(
+                (apu_acc + (oversample / 2)) / oversample,
+                15
+            );
+        }
+        return;
+    }
+
+    if (env_vol < 0) env_vol = 0;
+    if (env_vol > 15) env_vol = 15;
+    int32_t channel_volume = chl_vol + tre_var;
+    if (channel_volume < 0) channel_volume = 0;
+    if (channel_volume > 15) channel_volume = 15;
+    rel_vol = (uint8_t)(env_vol * channel_volume);
 
     if (is_tone_mode(mode)) {
         period_rely = period - period_offset;
@@ -512,7 +582,7 @@ void FAMI_CHANNEL::make_tick_sound() {
 void FAMI_CHANNEL::update_tick() {
     if (mode != DPCM_SAMPLE) {
         if (inst_proc.get_sequ_enable(PIT_SEQU) || inst_proc.get_sequ_enable(HPI_SEQU)) {
-            if (is_tone_mode(mode) || mode == FDS_WAVE) {
+            if (is_tone_mode(mode) || mode == FDS_WAVE || is_vrc6_mode(mode)) {
                 if (inst_proc.get_status(PIT_SEQU)) {
                     set_period(get_period() + (float)inst_proc.get_sequ_var(PIT_SEQU));
                 }
@@ -527,7 +597,7 @@ void FAMI_CHANNEL::update_tick() {
 
         if (inst_proc.get_sequ_enable(ARP_SEQU)) {
             if (inst_proc.get_status(ARP_SEQU)) {
-                if (is_tone_mode(mode) || mode == FDS_WAVE) {
+                if (is_tone_mode(mode) || mode == FDS_WAVE || is_vrc6_mode(mode)) {
                     set_note_rely(base_note + inst_proc.get_sequ_var(ARP_SEQU));
                 } else if (is_noise_mode(mode)) {
                     // DBG_PRINTF("ARP: %d->%d\n", inst_proc.get_pos(ARP_SEQU), inst_proc.get_sequ_var(ARP_SEQU));
@@ -537,7 +607,11 @@ void FAMI_CHANNEL::update_tick() {
         }
 
         if (inst_proc.get_sequ_enable(DTY_SEQU)) {
-            if (mode < TRIANGULAR) {
+            if (is_vrc6_pulse_mode(mode)) {
+                set_mode((WAVE_TYPE)(VRC6_PULSE_062 + (inst_proc.get_sequ_var(DTY_SEQU) & 7)));
+            } else if (mode == VRC6_SAW) {
+                set_mode(VRC6_SAW);
+            } else if (mode < TRIANGULAR) {
                 set_mode((WAVE_TYPE)inst_proc.get_sequ_var(DTY_SEQU));
             } else if (is_noise_mode(mode)) {
                 set_mode((WAVE_TYPE)(inst_proc.get_sequ_var(DTY_SEQU) & 1));
@@ -712,6 +786,9 @@ void FAMI_CHANNEL::set_arp_fx(uint8_t n1, uint8_t n2) {
     arp_fx_n1 = n1;
     arp_fx_n2 = n2;
     arp_fx_pos = 0;
+
+    slide_up = 0;
+    slide_down = 0;
 }
 
 void FAMI_CHANNEL::note_end() {
@@ -762,6 +839,10 @@ void FAMI_CHANNEL::set_period(float period_ref) {
         if (period_ref < 0.0f) period_ref = 0.0f;
         else if (period_ref > 4095.0f) period_ref = 4095.0f;
         period = period_ref;
+    } else if (is_vrc6_mode(mode)) {
+        if (period_ref < 12) period_ref = 12.0f;
+        else if (period_ref > 4095) period_ref = 4095.0f;
+        period = period_ref;
     } else {
         if (period_ref < 12) period_ref = 12.0f;
         else if (period_ref > 2048) period_ref = 2048.0f;
@@ -785,6 +866,10 @@ void FAMI_CHANNEL::set_note_rely(uint8_t note) {
     } else if (mode == FDS_WAVE) {
         rely_note = note;
         period = note_to_fds_period(note);
+    } else if (is_vrc6_mode(mode)) {
+        rely_note = note;
+        period = note2period(note);
+        pos_count = (freq / SAMP_RATE) * 32;
     } else if (is_tone_mode(mode)) {
         rely_note = note;
         period = note2period(note);
@@ -834,7 +919,7 @@ float FAMI_CHANNEL::get_period() {
 }
 
 float FAMI_CHANNEL::get_period_rel() {
-    if (is_tone_mode(mode))
+    if (is_tone_mode(mode) || is_vrc6_mode(mode))
         return period_rely;
     else if (is_noise_mode(mode))
         return get_noise_rate();
@@ -885,6 +970,13 @@ void FAMI_CHANNEL::set_mode(WAVE_TYPE m) {
     } else if (mode == FDS_WAVE || m == FDS_WAVE) {
         mode = FDS_WAVE;
         chl_mode = FDS_WAVE;
+    } else if (mode == VRC6_SAW || m == VRC6_SAW) {
+        mode = VRC6_SAW;
+        chl_mode = VRC6_SAW;
+    } else if (is_vrc6_pulse_mode(mode) || is_vrc6_pulse_mode(m)) {
+        uint8_t duty = is_vrc6_pulse_mode(m) ? (uint8_t)(m - VRC6_PULSE_062) : ((uint8_t)m & 7);
+        mode = (WAVE_TYPE)(VRC6_PULSE_062 + duty);
+        chl_mode = mode;
     } else if (is_noise_mode(mode)) {
         mode = (WAVE_TYPE)((m&1) + NOISE0);
         // DBG_PRINTF("SET_NOISE_MODE: %d\n", mode);
@@ -901,6 +993,13 @@ void FAMI_CHANNEL::set_chl_mode(WAVE_TYPE m) {
     } else if (m == FDS_WAVE || mode == FDS_WAVE) {
         chl_mode = FDS_WAVE;
         mode = FDS_WAVE;
+    } else if (m == VRC6_SAW || mode == VRC6_SAW) {
+        chl_mode = VRC6_SAW;
+        mode = VRC6_SAW;
+    } else if (is_vrc6_pulse_mode(m) || is_vrc6_pulse_mode(mode)) {
+        uint8_t duty = is_vrc6_pulse_mode(m) ? (uint8_t)(m - VRC6_PULSE_062) : ((uint8_t)m & 7);
+        chl_mode = (WAVE_TYPE)(VRC6_PULSE_062 + duty);
+        mode = chl_mode;
     } else if (is_noise_mode(mode)) {
         chl_mode = (WAVE_TYPE)((m&1) + NOISE0);
         DBG_PRINTF("SET_NOISE_MODE(CHL): %d\n", chl_mode);

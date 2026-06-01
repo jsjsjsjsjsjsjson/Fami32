@@ -19,14 +19,18 @@ extern "C" {
 #define NO_SUPPORT_MULTITRACK -5
 
 #define FAMI32_BASE_CHANNELS 5
+#define FAMI32_VRC6_CHANNELS 3
 #define FAMI32_VRC7_CHANNELS 6
 #define FAMI32_VRC7_FIRST_CHANNEL 5
+#define FAMI32_MMC5_CHANNELS 2
 #define FAMI32_FDS_CHANNELS 1
-#define FAMI32_MAX_CHANNELS 16
+#define FAMI32_MAX_CHANNELS 17
 
 #define FTM_EXT_NONE 0x00
+#define FTM_EXT_VRC6 0x01
 #define FTM_EXT_VRC7 0x02
 #define FTM_EXT_FDS 0x04
+#define FTM_EXT_MMC5 0x08
 
 #define INST_NONE 0
 #define INST_2A03 1
@@ -241,6 +245,7 @@ const uint8_t vaild_fx_table[20] = {
 class FTM_FILE {
 private:
     std::vector<std::vector<sequences_t>> sequences;
+    std::vector<std::vector<sequences_t>> vrc6_sequences;
     std::vector<instrument_t> instrument;
 
     std::vector<std::vector<uint8_t>> frames;
@@ -258,6 +263,7 @@ public:
     HEADER_BLOCK he_block;
     INSTRUMENT_BLOCK inst_block;
     SEQUENCES_BLOCK seq_block;
+    SEQUENCES_BLOCK vrc6_seq_block;
     FRAME_BLOCK fr_block;
     PATTERN_BLOCK pt_block;
     DPCM_SAMPLE_BLOCK dpcm_block;
@@ -297,6 +303,9 @@ public:
     void read_sequences_block();
     void read_sequences_data();
     void write_sequences();
+    void read_vrc6_sequences_block();
+    void read_vrc6_sequences_data();
+    void write_vrc6_sequences();
 
     void read_frame_block();
     void read_frame_data();
@@ -324,21 +333,34 @@ public:
     bool vrc7_enabled() const;
     void set_vrc7_enabled(bool enabled);
     bool is_vrc7_channel(int c) const;
+    int vrc7_channel_index() const;
+    bool vrc6_enabled() const;
+    void set_vrc6_enabled(bool enabled);
+    bool is_vrc6_channel(int c) const;
+    int vrc6_channel_index() const;
     bool fds_enabled() const;
     void set_fds_enabled(bool enabled);
     bool is_fds_channel(int c) const;
     int fds_channel_index() const;
+    bool mmc5_enabled() const;
+    void set_mmc5_enabled(bool enabled);
+    bool is_mmc5_channel(int c) const;
+    int mmc5_channel_index() const;
     int read_ftm_all();
 
     int8_t get_sequ_data(int type, int index, int seq_index);
     uint8_t get_sequ_len(int type, int index);
     sequences_t* get_sequ(int type, int index);
+    int8_t get_inst_sequ_data(instrument_t *inst, int type, int index, int seq_index);
+    sequences_t* get_inst_sequ(instrument_t *inst, int type, int index);
 
     instrument_t *get_inst(int n);
 
     void resize_sequ_len(int type, int index, int n);
+    void resize_inst_sequ_len(instrument_t *inst, int type, int index, int n);
 
     void resize_sequ(int type, int size);
+    void resize_inst_sequ(instrument_t *inst, int type, int size);
 
     void set_sequ_loop(int type, int index, uint32_t n);
     uint8_t get_sequ_loop(int type, int index);

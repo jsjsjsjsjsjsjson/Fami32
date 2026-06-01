@@ -39,6 +39,15 @@ int16_t nes_mix_sample(uint8_t pulse1, uint8_t pulse2, uint8_t triangle, uint8_t
     return (int16_t)sample;
 }
 
+int16_t nes_pulse_mix_sample(uint8_t pulse1, uint8_t pulse2) {
+    uint8_t pulse_index = pulse1 + pulse2;
+    if (pulse_index > 30) pulse_index = 30;
+
+    int32_t sample = (int32_t)(pulse_table[pulse_index] * 32767.0f);
+    if (sample > 32767) sample = 32767;
+    return (int16_t)sample;
+}
+
 int16_t clamp_i16(int32_t sample) {
     if (sample > 32767) return 32767;
     if (sample < -32768) return -32768;
@@ -95,12 +104,42 @@ void FAMI_PLAYER::setup_channel_modes() {
     channel[4].set_mode(DPCM_SAMPLE);
     channel[4].set_chl_mode(DPCM_SAMPLE);
 
+    if (ftm_data != NULL && ftm_data->vrc6_enabled()) {
+        int vrc6_c = ftm_data->vrc6_channel_index();
+        if (vrc6_c >= 0) {
+            for (uint8_t i = 0; i < FAMI32_VRC6_CHANNELS; ++i) {
+                uint8_t c = vrc6_c + i;
+                if (c < FAMI32_MAX_CHANNELS) {
+                    WAVE_TYPE mode = (i == 2) ? VRC6_SAW : VRC6_PULSE_062;
+                    channel[c].set_mode(mode);
+                    channel[c].set_chl_mode(mode);
+                }
+            }
+        }
+    }
+
     if (ftm_data != NULL && ftm_data->vrc7_enabled()) {
+        int vrc7_c = ftm_data->vrc7_channel_index();
         for (uint8_t i = 0; i < FAMI32_VRC7_CHANNELS; ++i) {
-            uint8_t c = FAMI32_VRC7_FIRST_CHANNEL + i;
-            channel[c].set_mode(VRC7_FM);
-            channel[c].set_chl_mode(VRC7_FM);
-            channel[c].set_vrc7_channel(i);
+            uint8_t c = vrc7_c + i;
+            if (c < FAMI32_MAX_CHANNELS) {
+                channel[c].set_mode(VRC7_FM);
+                channel[c].set_chl_mode(VRC7_FM);
+                channel[c].set_vrc7_channel(i);
+            }
+        }
+    }
+
+    if (ftm_data != NULL && ftm_data->mmc5_enabled()) {
+        int mmc5_c = ftm_data->mmc5_channel_index();
+        if (mmc5_c >= 0) {
+            for (uint8_t i = 0; i < FAMI32_MMC5_CHANNELS; ++i) {
+                uint8_t c = mmc5_c + i;
+                if (c < FAMI32_MAX_CHANNELS) {
+                    channel[c].set_mode(PULSE_125);
+                    channel[c].set_chl_mode(PULSE_125);
+                }
+            }
         }
     }
 
@@ -173,7 +212,7 @@ void FAMI_PLAYER::sync_vrc7_registers() {
     }
 
     for (uint8_t i = 0; i < FAMI32_VRC7_CHANNELS; ++i) {
-        uint8_t c = FAMI32_VRC7_FIRST_CHANNEL + i;
+        uint8_t c = ftm_data->vrc7_channel_index() + i;
         FAMI_CHANNEL &ch = channel[c];
 
         uint8_t patch = ch.get_vrc7_patch() & 0x0F;
@@ -236,8 +275,9 @@ void FAMI_PLAYER::mix_all_channel() {
         if (use_vrc7) {
             mixed += vrc7.calc();
 
+            int vrc7_c = ftm_data->vrc7_channel_index();
             for (uint8_t fm = 0; fm < FAMI32_VRC7_CHANNELS; ++fm) {
-                uint8_t c = FAMI32_VRC7_FIRST_CHANNEL + fm;
+                uint8_t c = vrc7_c + fm;
                 if (c < count && i < channel[c].get_buf_size()) {
                     channel[c].get_buf()[i] = mute[c] ? 0 : vrc7.get_channel_sample(fm);
                 }
@@ -248,6 +288,32 @@ void FAMI_PLAYER::mix_all_channel() {
             int fds_c = ftm_data->fds_channel_index();
             if (fds_c >= 0 && fds_c < (int)count && i < channel[fds_c].get_buf_size() && !mute[fds_c]) {
                 mixed += channel[fds_c].get_buf()[i];
+            }
+        }
+        if (ftm_data != NULL && ftm_data->mmc5_enabled()) {
+            int mmc5_c = ftm_data->mmc5_channel_index();
+            if (mmc5_c >= 0) {
+                uint8_t mmc5_pulse1 = 0;
+                uint8_t mmc5_pulse2 = 0;
+                if (mmc5_c < (int)count && i < channel[mmc5_c].get_buf_size() && !mute[mmc5_c]) {
+                    mmc5_pulse1 = channel[mmc5_c].get_apu_level_buf()[i];
+                }
+                uint8_t mmc5_c2 = mmc5_c + 1;
+                if (mmc5_c2 < count && i < channel[mmc5_c2].get_buf_size() && !mute[mmc5_c2]) {
+                    mmc5_pulse2 = channel[mmc5_c2].get_apu_level_buf()[i];
+                }
+                mixed += nes_pulse_mix_sample(mmc5_pulse1, mmc5_pulse2);
+            }
+        }
+        if (ftm_data != NULL && ftm_data->vrc6_enabled()) {
+            int vrc6_c = ftm_data->vrc6_channel_index();
+            if (vrc6_c >= 0) {
+                for (uint8_t v = 0; v < FAMI32_VRC6_CHANNELS; ++v) {
+                    uint8_t c = vrc6_c + v;
+                    if (c < count && i < channel[c].get_buf_size() && !mute[c]) {
+                        mixed += channel[c].get_buf()[i];
+                    }
+                }
             }
         }
         int16_t r = clamp_i16(mixed);

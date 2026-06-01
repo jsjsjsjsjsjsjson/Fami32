@@ -35,7 +35,13 @@ void osc_menu() {
             } else if (ftm.is_fds_channel(c)) {
                 display.print("FDS");
             } else if (ftm.is_vrc7_channel(c)) {
-                display.printf("FM%d", c - FAMI32_VRC7_FIRST_CHANNEL + 1);
+                display.printf("FM%d", c - ftm.vrc7_channel_index() + 1);
+            } else if (ftm.is_vrc6_channel(c)) {
+                int first = ftm.vrc6_channel_index();
+                if (c == first + 2) display.print("SAW");
+                else display.printf("V6%d", c - first + 1);
+            } else if (ftm.is_mmc5_channel(c)) {
+                display.printf("PU%d", c - ftm.mmc5_channel_index() + 3);
             } else {
                 display.printf("CH%d", c);
             }

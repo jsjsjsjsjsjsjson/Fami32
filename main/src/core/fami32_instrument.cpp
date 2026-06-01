@@ -23,7 +23,7 @@ uint8_t current_sequence_length(instrument_t *instrument, FTM_FILE *ftm_data, in
     if (instrument->type == INST_FDS) {
         return is_fds_sequence_type(n) ? instrument->fds_seq[n].length : 0;
     }
-    sequences_t *seq = ftm_data->get_sequ(n, instrument->seq_index[n].seq_index);
+    sequences_t *seq = ftm_data->get_inst_sequ(instrument, n, instrument->seq_index[n].seq_index);
     return seq != NULL ? seq->length : 0;
 }
 
@@ -34,7 +34,7 @@ uint32_t current_sequence_loop(instrument_t *instrument, FTM_FILE *ftm_data, int
     if (instrument->type == INST_FDS) {
         return is_fds_sequence_type(n) ? instrument->fds_seq[n].loop : SEQ_FEAT_DISABLE;
     }
-    sequences_t *seq = ftm_data->get_sequ(n, instrument->seq_index[n].seq_index);
+    sequences_t *seq = ftm_data->get_inst_sequ(instrument, n, instrument->seq_index[n].seq_index);
     return seq != NULL ? seq->loop : SEQ_FEAT_DISABLE;
 }
 
@@ -45,7 +45,7 @@ uint32_t current_sequence_release(instrument_t *instrument, FTM_FILE *ftm_data, 
     if (instrument->type == INST_FDS) {
         return is_fds_sequence_type(n) ? instrument->fds_seq[n].release : SEQ_FEAT_DISABLE;
     }
-    sequences_t *seq = ftm_data->get_sequ(n, instrument->seq_index[n].seq_index);
+    sequences_t *seq = ftm_data->get_inst_sequ(instrument, n, instrument->seq_index[n].seq_index);
     return seq != NULL ? seq->release : SEQ_FEAT_DISABLE;
 }
 
@@ -59,7 +59,7 @@ int8_t current_sequence_data(instrument_t *instrument, FTM_FILE *ftm_data, int n
         }
         return instrument->fds_seq[n].data[index];
     }
-    return ftm_data->get_sequ_data(n, instrument->seq_index[n].seq_index, index);
+    return ftm_data->get_inst_sequ_data(instrument, n, instrument->seq_index[n].seq_index, index);
 }
 
 int8_t default_sequence_value(int n, instrument_t *instrument) {

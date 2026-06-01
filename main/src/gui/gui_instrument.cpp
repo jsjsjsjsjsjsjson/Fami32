@@ -37,6 +37,7 @@ const char *random_name[177] = {
 
 static const char *instrument_type_name(uint8_t type) {
     switch (type) {
+        case INST_VRC6: return "TYPE:VRC6";
         case INST_VRC7: return "TYPE:VRC7";
         case INST_FDS: return "TYPE:FDS";
         default: return "TYPE:2A03";
@@ -44,21 +45,28 @@ static const char *instrument_type_name(uint8_t type) {
 }
 
 static void instrument_type_page() {
-    const char *type_str[3] = {"2A03", "VRC7", "FDS"};
+    const char *type_str[4] = {"2A03", "VRC6", "VRC7", "FDS"};
     int init = 0;
-    if (ftm.get_inst(inst_sel_pos)->type == INST_VRC7) init = 1;
-    else if (ftm.get_inst(inst_sel_pos)->type == INST_FDS) init = 2;
+    if (ftm.get_inst(inst_sel_pos)->type == INST_VRC6) init = 1;
+    else if (ftm.get_inst(inst_sel_pos)->type == INST_VRC7) init = 2;
+    else if (ftm.get_inst(inst_sel_pos)->type == INST_FDS) init = 3;
 
-    int ret = menu("INSTRUMENT TYPE", type_str, 3, NULL, 64, 37, 0, 0, init);
+    int ret = menu("INSTRUMENT TYPE", type_str, 4, NULL, 64, 45, 0, 0, init);
     if (ret == -1) return;
 
     if (ret == 1) {
+        ftm.set_inst_type(inst_sel_pos, INST_VRC6);
+        if (!ftm.vrc6_enabled()) {
+            ftm.set_vrc6_enabled(true);
+            player.reload();
+        }
+    } else if (ret == 2) {
         ftm.set_inst_type(inst_sel_pos, INST_VRC7);
         if (!ftm.vrc7_enabled()) {
             ftm.set_vrc7_enabled(true);
             player.reload();
         }
-    } else if (ret == 2) {
+    } else if (ret == 3) {
         ftm.set_inst_type(inst_sel_pos, INST_FDS);
         if (!ftm.fds_enabled()) {
             ftm.set_fds_enabled(true);
@@ -235,7 +243,7 @@ void instrument_menu() {
     }
 }
 
-void quick_gen_sequ(sequences_t *sequ, uint32_t type, uint32_t index) {
+void quick_gen_sequ(instrument_t *inst, sequences_t *sequ, uint32_t type, uint32_t index) {
     int mode = 0;
     int style = 0;
     int direction = 0;
@@ -284,7 +292,7 @@ void quick_gen_sequ(sequences_t *sequ, uint32_t type, uint32_t index) {
     }
 
     drawPopupBox("PLEASE WAIT...");
-    ftm.resize_sequ_len(type, index, len);
+    ftm.resize_inst_sequ_len(inst, type, index, len);
     if (mode == 0) {
         for (int i = 0; i < len; i++) {
             if (direction) {
@@ -908,7 +916,7 @@ void sequence_editor(instrument_t *inst) {
         display.setFont(&rismol35);
         display.setTextColor(1);
 
-        sequences_t *sequ = ftm.get_sequ(sequ_type, inst->seq_index[sequ_type].seq_index);
+        sequences_t *sequ = ftm.get_inst_sequ(inst, sequ_type, inst->seq_index[sequ_type].seq_index);
 
         if (sequ != NULL) {
             int draw_w = (sequ->length <= 32) ? (128 / sequ->length) : 4;
@@ -968,16 +976,17 @@ void sequence_editor(instrument_t *inst) {
                 display.setCursor(0, 45);
             } else if (sequ_type == DTY_SEQU) {
                 drawChessboard(0, 20, 128, 1);
+                int duty_scale = (inst->type == INST_VRC6) ? 5 : 10;
                 for (int i = pageStart; i < pageEnd; i++) {
                     int displayIndex = i - pageStart;
                     if ((player.channel[channel_sel_pos].get_inst() == inst) && (player.channel[channel_sel_pos].get_inst_pos(sequ_type) == i)) {
-                        drawChessboard((displayIndex * draw_w) + 1, (51 - (sequ->data[i] * 10)) + 1, draw_w - 2, (sequ->data[i] * 10) - 2);
+                        drawChessboard((displayIndex * draw_w) + 1, (51 - (sequ->data[i] * duty_scale)) + 1, draw_w - 2, (sequ->data[i] * duty_scale) - 2);
                     }
                     if (i == sequ_sel_index) {
                         display.drawFastHLine(displayIndex * draw_w, 12, draw_w, 1);
-                        display.fillRect(displayIndex * draw_w, (51 - (sequ->data[i] * 10)), draw_w, (sequ->data[i] * 10), 1);
+                        display.fillRect(displayIndex * draw_w, (51 - (sequ->data[i] * duty_scale)), draw_w, (sequ->data[i] * duty_scale), 1);
                     } else {
-                        display.drawRect(displayIndex * draw_w, (51 - (sequ->data[i] * 10)), draw_w, (sequ->data[i] * 10), 1);
+                        display.drawRect(displayIndex * draw_w, (51 - (sequ->data[i] * duty_scale)), draw_w, (sequ->data[i] * duty_scale), 1);
                     }
                 }
                 display.setCursor(0, 12);
@@ -1012,8 +1021,8 @@ void sequence_editor(instrument_t *inst) {
                 if (e.bit.KEY == KEY_OK) {
                     inst->seq_index[sequ_type].enable = !inst->seq_index[sequ_type].enable;
                     if (sequ == NULL) {
-                        ftm.resize_sequ(sequ_type, inst->seq_index[sequ_type].seq_index + 1);
-                        ftm.resize_sequ_len(sequ_type, inst->seq_index[sequ_type].seq_index, 1);
+                        ftm.resize_inst_sequ(inst, sequ_type, inst->seq_index[sequ_type].seq_index + 1);
+                        ftm.resize_inst_sequ_len(inst, sequ_type, inst->seq_index[sequ_type].seq_index, 1);
                     }
                 } else if (e.bit.KEY == KEY_BACK) {
                     return;
@@ -1042,7 +1051,7 @@ void sequence_editor(instrument_t *inst) {
                     case 0:
                         if (sequ != NULL) {
                             num_set_menu_int("SEQU LENGTH", 1, 255, 1, &sequ_len, 0, 0, 100, 34);
-                            ftm.resize_sequ_len(sequ_type, inst->seq_index[sequ_type].seq_index, sequ_len);
+                            ftm.resize_inst_sequ_len(inst, sequ_type, inst->seq_index[sequ_type].seq_index, sequ_len);
                             sequ_sel_index = sequ_len - 1;
                         }
                         break;
@@ -1068,7 +1077,7 @@ void sequence_editor(instrument_t *inst) {
 
                     case 4:
                         if (sequ != NULL) {
-                            quick_gen_sequ(sequ, sequ_type, inst->seq_index[sequ_type].seq_index);
+                            quick_gen_sequ(inst, sequ, sequ_type, inst->seq_index[sequ_type].seq_index);
                             sequ_sel_index = sequ->length - 1;
                         } else {
                             drawPopupBox("CREATE THIS SEQUENCE FIRST!");
@@ -1114,7 +1123,7 @@ void sequence_editor(instrument_t *inst) {
                         sequ->data[sequ_sel_index]++;
                         if (sequ_type == VOL_SEQU && sequ->data[sequ_sel_index] > 15) {
                             sequ->data[sequ_sel_index] = 15;
-                        } if (sequ_type == DTY_SEQU && sequ->data[sequ_sel_index] > 3) {
+                        } if (sequ_type == DTY_SEQU && sequ->data[sequ_sel_index] > (inst->type == INST_VRC6 ? 7 : 3)) {
                             sequ->data[sequ_sel_index] = 0;
                         }
                     }
@@ -1125,7 +1134,7 @@ void sequence_editor(instrument_t *inst) {
                             if (sequ_type == VOL_SEQU) {
                                 sequ->data[sequ_sel_index] = 0;
                             } else if (sequ_type == DTY_SEQU) {
-                                sequ->data[sequ_sel_index] = 3;
+                                sequ->data[sequ_sel_index] = (inst->type == INST_VRC6 ? 7 : 3);
                             }
                         }
                     }
