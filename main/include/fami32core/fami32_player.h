@@ -35,6 +35,12 @@ private:
 
     bool mute[FAMI32_MAX_CHANNELS] = {false};
     VRC7_SYNTH vrc7;
+
+    bool defer_row_navigation = false;
+    bool pending_jump_frame = false;
+    bool pending_next_frame = false;
+    int pending_jump_frame_target = 0;
+    int pending_next_frame_row = 0;
 public:
     FAMI_CHANNEL channel[FAMI32_MAX_CHANNELS];
 
@@ -84,6 +90,9 @@ private:
     void recalculate_ticks_row();
     void setup_channel_modes();
     void sync_vrc7_registers();
+    void request_jmp_to_frame(int f);
+    void request_next_frame(int r);
+    void finish_row_navigation();
 };
 
 #endif

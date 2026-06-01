@@ -362,10 +362,10 @@ void FAMI_PLAYER::process_efx_pre(fx_t fxdata[4], int c) {
                 DBG_PRINTF("C%d: SET SPEED -> %d\n", c, fxdata[i].fx_var);
             }
         } else if (fxdata[i].fx_cmd == 0x02) {
-            jmp_to_frame(fxdata[i].fx_var);
+            request_jmp_to_frame(fxdata[i].fx_var);
             DBG_PRINTF("C%d: JMP TO FRAME -> %02X\n", c, fxdata[i].fx_var);
         } else if (fxdata[i].fx_cmd == 0x03) {
-            next_frame(fxdata[i].fx_var - 1);
+            request_next_frame(fxdata[i].fx_var);
             DBG_PRINTF("C%d: SKIP TO NEXT FRAME ROW %d\n", c, fxdata[i].fx_var);
         } else if (fxdata[i].fx_cmd == 0x04) {
             stop_play();
@@ -493,6 +493,7 @@ void FAMI_PLAYER::process_tick() {
     }
 
     while (tick_accumulator >= ticks_row) {
+        defer_row_navigation = true;
         for (uint32_t c = 0; c < get_channel_count(); c++) {
             ft_items[c] = ftm_data->get_pt_item(c, ftm_data->get_frame_map(frame, c), row);
             // process_efx(ft_items[c].fxdata, c);
@@ -500,12 +501,10 @@ void FAMI_PLAYER::process_tick() {
             if (!delay_count[c])
                 process_item(ft_items[c], c);
         }
+        defer_row_navigation = false;
 
-        row++;
+        finish_row_navigation();
         row_event_counter++;
-        if (row >= ftm_data->fr_block.pat_length) {
-            next_frame(0);
-        }
 
         tick_accumulator -= ticks_row;
     }
@@ -530,6 +529,49 @@ void FAMI_PLAYER::jmp_to_frame(int f) {
     }
     frame = f;
     row = -1;
+}
+
+void FAMI_PLAYER::request_jmp_to_frame(int f) {
+    if (!defer_row_navigation) {
+        jmp_to_frame(f);
+        return;
+    }
+
+    pending_jump_frame = true;
+    pending_jump_frame_target = f;
+}
+
+void FAMI_PLAYER::request_next_frame(int r) {
+    if (!defer_row_navigation) {
+        next_frame(r - 1);
+        return;
+    }
+
+    pending_next_frame = true;
+    pending_next_frame_row = r;
+}
+
+void FAMI_PLAYER::finish_row_navigation() {
+    if (pending_jump_frame) {
+        int f = pending_jump_frame_target;
+        if (f >= ftm_data->fr_block.frame_num) {
+            f = 0;
+        } else if (f < 0) {
+            f = ftm_data->fr_block.frame_num - 1;
+        }
+        frame = f;
+        row = pending_next_frame ? pending_next_frame_row : 0;
+    } else if (pending_next_frame) {
+        next_frame(pending_next_frame_row);
+    } else {
+        row++;
+        if (row >= ftm_data->fr_block.pat_length) {
+            next_frame(0);
+        }
+    }
+
+    pending_jump_frame = false;
+    pending_next_frame = false;
 }
 
 int16_t* FAMI_PLAYER::get_buf() {
