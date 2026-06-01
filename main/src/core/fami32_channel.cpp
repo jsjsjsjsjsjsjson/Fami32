@@ -62,6 +62,11 @@ void period_to_vrc7_pitch(float period, uint16_t &fnum, uint8_t &block) {
 
 const uint8_t VRC7_DEFAULT_REGS[8] = {0x01, 0x21, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x0F};
 const int8_t FDS_MOD_BIAS[8] = {0, 1, 2, 4, 0, -4, -2, -1};
+const uint16_t NOISE_PERIODS[16] = {
+    4068, 2034, 1016, 762, 508, 380, 254, 202,
+    160, 128, 96, 64, 32, 16, 8, 4
+};
+constexpr int NOISE_OVERSAMPLE_MAX = 64;
 
 float midi_note_to_freq(uint8_t midi_note) {
     return BASE_FREQ_HZ * exp2f(((float)midi_note - 69.0f) / 12.0f);
@@ -190,12 +195,20 @@ void FAMI_CHANNEL::init(FTM_FILE* data) {
     tick_buf.resize(tick_length);
     apu_level_buf.resize(tick_length);
     reset_fir_state();
+    reset_noise_state();
     DBG_PRINTF("INIT: ftm_data = %p, tick_length = (%d / %d) = %d\n", ftm_data, SAMP_RATE, ENG_SPEED, tick_length);
     hpf.setCutoffFrequency(HPF_CUTOFF, SAMP_RATE);
 }
 
 void FAMI_CHANNEL::reset_fir_state() {
     memset(&pcm_fir_state, 0, sizeof(pcm_fir_state));
+    memset(&noise_level_fir_state, 0, sizeof(noise_level_fir_state));
+}
+
+void FAMI_CHANNEL::reset_noise_state() {
+    noise_shift_reg = 1;
+    noise_timer = 0.0f;
+    update_noise_period();
 }
 
 void FAMI_CHANNEL::fir_push(FirState &state, int32_t x) {
@@ -210,6 +223,28 @@ int32_t FAMI_CHANNEL::fir_apply(const FirState &state) const {
         acc += state.hist[i];
     }
     return acc >> 3;
+}
+
+void FAMI_CHANNEL::update_noise_period() {
+    uint8_t index = noise_rate_rel;
+    if (index > 15) index = 15;
+    noise_period = (float)NOISE_PERIODS[index] * SAMP_RATE / FCPU_HZ;
+    if (noise_period <= 0.0f) {
+        noise_period = 1.0f;
+    }
+}
+
+bool FAMI_CHANNEL::next_noise_bit(bool short_mode, float step) {
+    noise_timer += step;
+    uint8_t feedback_bit = short_mode ? 6 : 1;
+
+    while (noise_timer >= noise_period) {
+        noise_timer -= noise_period;
+        uint16_t feedback = ((noise_shift_reg & 1) ^ ((noise_shift_reg >> feedback_bit) & 1)) << 14;
+        noise_shift_reg = (noise_shift_reg >> 1) | feedback;
+    }
+
+    return (noise_shift_reg & 1) != 0;
 }
 
 void FAMI_CHANNEL::set_slide_up(uint8_t n) {
@@ -522,10 +557,35 @@ void FAMI_CHANNEL::make_tick_sound() {
     } else if (is_noise_mode(mode)) {
         uint8_t nes_vol = (rel_vol + 7) / 15;
         if (nes_vol > 15) nes_vol = 15;
+        int noise_oversample = OVER_SAMPLE;
+        if (noise_oversample < 1) noise_oversample = 1;
+        while (noise_oversample < NOISE_OVERSAMPLE_MAX &&
+               noise_period * (float)noise_oversample < 1.0f) {
+            noise_oversample++;
+        }
+        float noise_step = 1.0f / (float)noise_oversample;
+        bool short_mode = mode == NOISE1;
+
         for (int i = 0; i < tick_length; i++) {
-            int16_t noise_sample = nes_noise_get_sample(mode == NOISE1);
-            tick_buf[i] = (noise_sample * rel_vol) >> 4;
-            apu_level_buf[i] = noise_sample > 0 ? nes_vol : 0;
+            int32_t pcm_out = 0;
+            int32_t level_out = 0;
+
+            for (int j = 0; j < noise_oversample; j++) {
+                bool noise_bit = next_noise_bit(short_mode, noise_step);
+                int32_t pcm_sub = (((noise_bit ? -128 : 127) * (int32_t)rel_vol) >> 4);
+                int32_t level_sub = noise_bit ? 0 : nes_vol;
+
+                fir_push(pcm_fir_state, pcm_sub);
+                fir_push(noise_level_fir_state, level_sub);
+
+                if (j == noise_oversample - 1) {
+                    pcm_out = fir_apply(pcm_fir_state);
+                    level_out = fir_apply(noise_level_fir_state);
+                }
+            }
+
+            tick_buf[i] = clamp_i16(pcm_out);
+            apu_level_buf[i] = clamp_apu_level(level_out, 15);
         }
     } else if (mode == DPCM_SAMPLE) {
         float count = dpcm_pitch_table[sample_pitch] / SAMP_RATE;
@@ -936,7 +996,7 @@ void FAMI_CHANNEL::set_noise_rate(uint8_t rate) {
 
 void FAMI_CHANNEL::set_noise_rate_rel(uint8_t rate) {
     noise_rate_rel = rate;
-    nes_noise_set_period(noise_rate_rel);
+    update_noise_period();
 }
 
 uint8_t FAMI_CHANNEL::get_noise_rate() {

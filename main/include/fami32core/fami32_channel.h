@@ -26,6 +26,9 @@ private:
 
     uint8_t noise_rate = 0;
     uint8_t noise_rate_rel = 0;
+    uint16_t noise_shift_reg = 1;
+    float noise_timer = 0.0f;
+    float noise_period = 4.0f;
     uint8_t triangle_hold_level = 8;
 
     int sample_pos = 0;
@@ -118,6 +121,7 @@ private:
         int32_t hist[FIR_TAPS];
         uint8_t wr;   // ring write index
     } pcm_fir_state;
+    FirState noise_level_fir_state;
 
 public:
     uint8_t base_note;
@@ -209,6 +213,9 @@ public:
 
 private:
     void reset_fir_state();
+    void reset_noise_state();
+    void update_noise_period();
+    bool next_noise_bit(bool short_mode, float step);
     void sync_vrc7_instrument();
     void sync_fds_instrument();
     void fir_push(FirState &state, int32_t x);
