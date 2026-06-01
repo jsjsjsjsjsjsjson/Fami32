@@ -389,7 +389,7 @@ void FAMI_CHANNEL::make_tick_sound() {
         if (vib_spd && vib_dep) {
             vib_pos = (vib_pos + vib_spd) & 63;
             int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
-            period_rely = get_period() + vib_var;
+            period_rely = get_period() + vib_var - period_offset;
         }
         if (period_rely < 0.0f) period_rely = 0.0f;
         if (period_rely > 4095.0f) period_rely = 4095.0f;
@@ -436,7 +436,7 @@ void FAMI_CHANNEL::make_tick_sound() {
         if (vib_spd && vib_dep) {
             vib_pos = (vib_pos + vib_spd) & 63;
             int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
-            period_rely = get_period() + vib_var;
+            period_rely = period - period_offset + vib_var;
         }
         if (period_rely < 12.0f) period_rely = 12.0f;
         if (period_rely > 4095.0f) period_rely = 4095.0f;
@@ -494,7 +494,7 @@ void FAMI_CHANNEL::make_tick_sound() {
         if (vib_spd && vib_dep) {
             vib_pos = (vib_pos + vib_spd) & 63;
             int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
-            period_rely = get_period() + vib_var;
+            period_rely = period - period_offset + vib_var;
             pos_count = (period2freq(period_rely) / SAMP_RATE) * 32;
         }
 
