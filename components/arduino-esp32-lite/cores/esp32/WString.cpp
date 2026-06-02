@@ -156,10 +156,7 @@ String::~String() {
 /*********************************************/
 
 inline void String::init(void) {
-  setSSO(false);
-  setBuffer(nullptr);
-  setCapacity(0);
-  setLen(0);
+  memset(&ptr, 0, sizeof(ptr));
 }
 
 void String::invalidate(void) {
