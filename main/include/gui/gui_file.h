@@ -7,6 +7,7 @@
 void menu_file();
 void open_file_page();
 void export_vgm_page();
-const char* file_select(const char *basePath);
+typedef bool (*file_select_accept_fn)(const char *path, void *user);
+const char* file_select(const char *basePath, file_select_accept_fn accept = NULL, void *user = NULL);
 
 #endif // GUI_FILE_H

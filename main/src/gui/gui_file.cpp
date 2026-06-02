@@ -34,10 +34,74 @@ private:
     bool keypad_suspended_ = false;
 };
 
+void free_namelist(struct dirent **namelist, int n) {
+    if (!namelist) {
+        return;
+    }
+    for (int i = 0; i < n; ++i) {
+        free(namelist[i]);
+    }
+    free(namelist);
+}
+
+bool open_selected_ftm_file(const char *file, void *user) {
+    (void)user;
+    drawPopupBox("READING...");
+    int ret = ftm.open_ftm(file);
+    ESP_LOGI("OPEN_FILE", "Open file %s...", file);
+    if (ret) {
+        // Handle file open error codes
+        switch (ret) {
+            case FILE_OPEN_ERROR:
+                drawPopupBox("OPEN FILE ERROR");
+                ESP_LOGE("OPEN_FILE", "Cannot open %s", file);
+                break;
+            case FTM_NOT_VALID:
+                drawPopupBox("NOT A VALID FTM FILE");
+                ESP_LOGE("OPEN_FILE", "%s is not a valid FTM file", file);
+                break;
+            case NO_SUPPORT_VERSION:
+                drawPopupBox("UNSUPPORTED .FTM VERSION");
+                ESP_LOGE("OPEN_FILE", "%s version not supported", file);
+                break;
+            default:
+                break;
+        }
+        display.display();
+        ftm.new_ftm();
+        vTaskDelay(1024);
+        return false;
+    }
+
+    // File opened successfully, now read all content
+    ret = ftm.read_ftm_all();
+    ESP_LOGI("OPEN_FILE", "Reading FTM content...");
+    if (ret) {
+        // Handle file content read errors (e.g., unsupported features)
+        switch (ret) {
+            case NO_SUPPORT_EXTCHIP:
+                drawPopupBox("EXT-CHIP NOT SUPPORTED");
+                ESP_LOGE("OPEN_FILE", "File uses unsupported extension chip");
+                break;
+            case NO_SUPPORT_MULTITRACK:
+                drawPopupBox("MULTI-TRACK NOT SUPPORTED");
+                ESP_LOGE("OPEN_FILE", "File uses unsupported multi-track");
+                break;
+            default:
+                break;
+        }
+        display.display();
+        ftm.new_ftm();
+        vTaskDelay(1024);
+        return false;
+    }
+    return true;
+}
+
 }
 
 // File selection UI: Browse files and directories starting from basePath. Returns chosen file path or NULL if cancelled.
-const char* file_select(const char *basePath) {
+const char* file_select(const char *basePath, file_select_accept_fn accept, void *user) {
     display.setFont(&rismol35);
     struct dirent **namelist = NULL;
     int n = 0;
@@ -72,10 +136,7 @@ const char* file_select(const char *basePath) {
         if (directory_changed) {
             // Free previous scan results
             if (namelist) {
-                for (int i = 0; i < n; ++i) {
-                    free(namelist[i]);
-                }
-                free(namelist);
+                free_namelist(namelist, n);
                 namelist = NULL;
                 n = 0;
             }
@@ -218,11 +279,11 @@ const char* file_select(const char *basePath) {
                                 // File selected
                                 strncpy(selected_file, selPath, PATH_MAX - 1);
                                 selected_file[PATH_MAX - 1] = '\0';
-                                // Clean up name list memory
-                                for (int i = 0; i < n; ++i) {
-                                    free(namelist[i]);
+                                if (accept && !accept(selected_file, user)) {
+                                    break;
                                 }
-                                free(namelist);
+                                // Clean up name list memory
+                                free_namelist(namelist, n);
                                 namelist = NULL;
                                 n = 0;
                                 return selected_file;
@@ -232,6 +293,7 @@ const char* file_select(const char *basePath) {
                     case KEY_BACK:
                         // Go up to parent directory or exit if at base
                         if (strcmp(current_path, basePath) == 0) {
+                            free_namelist(namelist, n);
                             return NULL;
                         }
                         // Remove last path component
@@ -266,57 +328,9 @@ const char* file_select(const char *basePath) {
 void open_file_page() {
     drawPopupBox("LOADING...");
     pause_sound();
-    const char* file = file_select("/flash");
+    const char* file = file_select("/flash", open_selected_ftm_file, NULL);
     if (file == NULL) {
         return; // user cancelled
-    }
-    drawPopupBox("READING...");
-    int ret = ftm.open_ftm(file);
-    ESP_LOGI("OPEN_FILE", "Open file %s...", file);
-    if (ret) {
-        // Handle file open error codes
-        switch (ret) {
-            case FILE_OPEN_ERROR:
-                drawPopupBox("OPEN FILE ERROR");
-                ESP_LOGE("OPEN_FILE", "Cannot open %s", file);
-                break;
-            case FTM_NOT_VALID:
-                drawPopupBox("NOT A VALID FTM FILE");
-                ESP_LOGE("OPEN_FILE", "%s is not a valid FTM file", file);
-                break;
-            case NO_SUPPORT_VERSION:
-                drawPopupBox("UNSUPPORTED .FTM VERSION");
-                ESP_LOGE("OPEN_FILE", "%s version not supported", file);
-                break;
-            default:
-                break;
-        }
-        display.display();
-        ftm.new_ftm();
-        vTaskDelay(1024);
-        return;
-    }
-    // File opened successfully, now read all content
-    ret = ftm.read_ftm_all();
-    ESP_LOGI("OPEN_FILE", "Reading FTM content...");
-    if (ret) {
-        // Handle file content read errors (e.g., unsupported features)
-        switch (ret) {
-            case NO_SUPPORT_EXTCHIP:
-                drawPopupBox("EXT-CHIP NOT SUPPORTED");
-                ESP_LOGE("OPEN_FILE", "File uses unsupported extension chip");
-                break;
-            case NO_SUPPORT_MULTITRACK:
-                drawPopupBox("MULTI-TRACK NOT SUPPORTED");
-                ESP_LOGE("OPEN_FILE", "File uses unsupported multi-track");
-                break;
-            default:
-                break;
-        }
-        display.display();
-        ftm.new_ftm();
-        vTaskDelay(1024);
-        return;
     }
     player.reload(); // Reload player with new file data
 }
