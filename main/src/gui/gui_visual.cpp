@@ -19,6 +19,72 @@ static uint8_t visual_visible_channel_count() {
     return count < 5 ? count : 5;
 }
 
+static const char *visual_channel_label(uint8_t channel, char *buf, size_t len) {
+    if (len < 5) {
+        return "";
+    }
+    if (channel < 5) {
+        static const char *base_short[5] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
+        return base_short[channel];
+    }
+    if (ftm.is_fds_channel(channel)) {
+        return "FDS";
+    }
+    if (ftm.is_vrc7_channel(channel)) {
+        uint8_t index = channel - ftm.vrc7_channel_index() + 1;
+        buf[0] = 'F';
+        buf[1] = 'M';
+        buf[2] = (char)('0' + index);
+        buf[3] = '\0';
+        return buf;
+    }
+    if (ftm.is_vrc6_channel(channel)) {
+        int first = ftm.vrc6_channel_index();
+        if (channel == first + 2) {
+            return "SAW";
+        }
+        uint8_t index = channel - first + 1;
+        buf[0] = 'V';
+        buf[1] = '6';
+        buf[2] = (char)('0' + index);
+        buf[3] = '\0';
+        return buf;
+    }
+    if (ftm.is_mmc5_channel(channel)) {
+        uint8_t index = channel - ftm.mmc5_channel_index() + 3;
+        buf[0] = 'P';
+        buf[1] = 'U';
+        buf[2] = (char)('0' + index);
+        buf[3] = '\0';
+        return buf;
+    }
+    uint8_t index = channel > 99 ? 99 : channel;
+    buf[0] = 'C';
+    buf[1] = 'H';
+    if (index >= 10) {
+        buf[2] = (char)('0' + (index / 10));
+        buf[3] = (char)('0' + (index % 10));
+        buf[4] = '\0';
+    } else {
+        buf[2] = (char)('0' + index);
+        buf[3] = '\0';
+    }
+    return buf;
+}
+
+static void visual_channel_values(uint8_t channel, uint8_t *pitchVal, uint8_t *volVal) {
+    float period_rel = player.channel[channel].get_period_rel();
+    if (channel == 2) {
+        *pitchVal = (uint8_t)roundf(period2note(period_rel * 2.0f)) - 12;
+        *volVal = player.channel[channel].get_rel_vol() ? 2 : 0;
+        return;
+    }
+
+    *pitchVal = (uint8_t)roundf(period2note(period_rel)) - 12;
+    uint8_t rel_vol = player.channel[channel].get_rel_vol();
+    *volVal = (rel_vol + 55) / 56;
+}
+
 void osc_menu() {
     for (;;) {
         display.clearDisplay();
@@ -148,24 +214,19 @@ void osc_menu() {
 
 void visual_menu() {
     display.setTextColor(1);
-    static ringbuf<uint8_t, 64> visual_buf[5];
-    static ringbuf<uint8_t, 64> visual_buf_vol[5];
-    static const char chn_labels[5][4] = {"PU1", "PU2", "TRI", "NOS", "DMC"};
+    static ringbuf<uint8_t, 64> visual_buf[FAMI32_MAX_CHANNELS];
+    static ringbuf<uint8_t, 64> visual_buf_vol[FAMI32_MAX_CHANNELS];
     static bool first_run = true;
+    uint8_t channel_count = player.get_channel_count();
+    if (channel_count > FAMI32_MAX_CHANNELS) {
+        channel_count = FAMI32_MAX_CHANNELS;
+    }
 
     if (first_run) {
-        for (int c = 0; c < 5; ++c) {
+        for (uint8_t c = 0; c < FAMI32_MAX_CHANNELS; ++c) {
             uint8_t pitchVal;
             uint8_t volVal;
-            if (c == 2) {  // Triangle channel
-                pitchVal = (uint8_t)roundf(period2note(player.channel[c].get_period_rel() * 2.0f)) - 12;
-                volVal = player.channel[c].get_rel_vol() ? 2 : 0;
-            } else {
-                float period_rel = player.channel[c].get_period_rel();
-                pitchVal = (uint8_t)roundf(period2note(period_rel)) - 12;
-                uint8_t rel_vol = player.channel[c].get_rel_vol();
-                volVal = (rel_vol + 55) / 56;
-            }
+            visual_channel_values(c, &pitchVal, &volVal);
 
             for (int i = 0; i < 64; ++i) {
                 visual_buf[c].push(pitchVal);
@@ -178,32 +239,29 @@ void visual_menu() {
     for (;;) {
         display.clearDisplay();
 
-        static uint8_t pitchVals[5];
-        static uint8_t volVals[5];
+        channel_count = player.get_channel_count();
+        if (channel_count > FAMI32_MAX_CHANNELS) {
+            channel_count = FAMI32_MAX_CHANNELS;
+        }
+
+        static uint8_t pitchVals[FAMI32_MAX_CHANNELS];
+        static uint8_t volVals[FAMI32_MAX_CHANNELS];
         
-        for (int c = 0; c < 5; ++c) {
-            if (c == 2) {  // Triangle channel
-                float period_rel = player.channel[c].get_period_rel();
-                pitchVals[c] = (uint8_t)roundf(period2note(period_rel * 2.0f)) - 12;
-                volVals[c] = player.channel[c].get_rel_vol() ? 2 : 0;
-            } else {
-                float period_rel = player.channel[c].get_period_rel();
-                pitchVals[c] = (uint8_t)roundf(period2note(period_rel)) - 12;
-                uint8_t rel_vol = player.channel[c].get_rel_vol();
-                volVals[c] = (rel_vol + 55) / 56;
-            }
+        for (uint8_t c = 0; c < channel_count; ++c) {
+            visual_channel_values(c, &pitchVals[c], &volVals[c]);
 
             visual_buf[c].push(pitchVals[c]);
             visual_buf_vol[c].push(volVals[c]);
 
             uint8_t label_x = pitchVals[c] > 5 ? pitchVals[c] - 5 : 0;
+            char label_buf[5];
             display.setCursor(label_x, 0);
-            display.print(chn_labels[c]);
+            display.print(visual_channel_label(c, label_buf, sizeof(label_buf)));
         }
 
-        for (int y = 0; y < 123; ++y) {
-            int buf_index = 127 - y;
-            for (int c = 0; c < 5; ++c) {
+        for (int y = 0; y < 59; ++y) {
+            int buf_index = 63 - y;
+            for (uint8_t c = 0; c < channel_count; ++c) {
                 uint8_t pitchHistory = visual_buf[c][buf_index];
                 uint8_t volHistory = visual_buf_vol[c][buf_index];
 
