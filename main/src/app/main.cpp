@@ -200,13 +200,18 @@ void midi_callback(midiEventPacket_t packet) {
     static midiEventData_t e;
     memcpy(&e, &packet, 4);
     ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
-    set_channel_sel_pos(e.ch);
-    if (e.event == MIDI_CIN_NOTE_ON) {
-        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
-        player.channel[channel_sel_pos].set_note(e.note);
-        player.channel[channel_sel_pos].set_vol(e.vol >> 3);
-        player.channel[channel_sel_pos].note_start();
+    const bool note_on = e.event == MIDI_CIN_NOTE_ON && e.vol > 0;
+    const bool note_off = e.event == MIDI_CIN_NOTE_OFF || (e.event == MIDI_CIN_NOTE_ON && e.vol == 0);
+    if (edit_mode) {
+        set_channel_sel_pos(e.ch);
+    }
+
+    if (note_on) {
         if (edit_mode) {
+            player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+            player.channel[channel_sel_pos].set_note(e.note);
+            player.channel[channel_sel_pos].set_vol(e.vol >> 3);
+            player.channel[channel_sel_pos].note_start();
             unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
             pt_tmp.note = (e.note % 12) + 1;
             pt_tmp.octave = (e.note / 12) - 2;
@@ -216,10 +221,12 @@ void midi_callback(midiEventPacket_t packet) {
             if (!player.get_play_status()) {
                 player.set_row(player.get_row() + 1);
             }
+        } else {
+            note_io_preview_note_on(e.note, e.vol >> 3, NOTE_IO_SOURCE_MIDI, e.ch);
         }
-    } else if (e.event == MIDI_CIN_NOTE_OFF) {
-        player.channel[channel_sel_pos].note_end();
+    } else if (note_off) {
         if (edit_mode) {
+            player.channel[channel_sel_pos].note_end();
             if (player.get_play_status()) {
                 unpk_item_t pt_tmp = ftm.get_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row());
                 pt_tmp.note = NOTE_END;
@@ -227,6 +234,8 @@ void midi_callback(midiEventPacket_t packet) {
                 pt_tmp.octave = NO_OCT;
                 ftm.set_pt_item(channel_sel_pos, player.get_cur_frame_map(channel_sel_pos), player.get_row(), pt_tmp);
             }
+        } else {
+            note_io_preview_note_off(e.note, NOTE_IO_SOURCE_MIDI, e.ch);
         }
     } else if (e.event == MIDI_CIN_CONTROL_CHANGE) {
         if (e.note == 0x20) {
@@ -235,9 +244,13 @@ void midi_callback(midiEventPacket_t packet) {
                 set_prog = ftm.inst_block.inst_num - 1;
             }
             inst_sel_pos = set_prog;
-        } if (e.note == 0x7B) {
-            player.channel[e.ch % 5].note_cut();
-            printf("ALL NOTES OFF IN CHANNEL%d\n", e.ch % 5);
+        } else if (e.note == 0x7B) {
+            if (edit_mode) {
+                player.channel[channel_sel_pos].note_cut();
+            } else {
+                note_io_preview_all_notes_off();
+            }
+            printf("ALL NOTES OFF\n");
         } else {
             printf("UNKNOW CC: CMD=%02X, PARAM=%02X\n", e.note, e.vol);
         }
