@@ -311,7 +311,8 @@ void FAMI_PLAYER::mix_all_channel() {
                 for (uint8_t v = 0; v < FAMI32_VRC6_CHANNELS; ++v) {
                     uint8_t c = vrc6_c + v;
                     if (c < count && i < channel[c].get_buf_size() && !mute[c]) {
-                        mixed += ((int32_t)channel[c].get_buf()[i] * 7) >> 2;
+                        if (v == 2) mixed += ((int32_t)channel[c].get_buf()[i] * 8) >> 2;
+                        else mixed += ((int32_t)channel[c].get_buf()[i] * 3) >> 1;
                     }
                 }
             }
