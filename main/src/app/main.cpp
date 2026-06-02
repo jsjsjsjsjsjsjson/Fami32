@@ -355,9 +355,9 @@ extern "C" void app_main(void) {
     }
     keypad.read();
 
-    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 10, &SOUND_TASK_HD, 1);
+    xTaskCreatePinnedToCore(sound_task, "SOUND TASK", 8192, NULL, 20, &SOUND_TASK_HD, 0);
     touch_input_init();
-    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 5, &KEYPAD_TASK_HD, 0);
+    xTaskCreatePinnedToCore(keypad_task, "KEYPAD", 8192, NULL, 4, &KEYPAD_TASK_HD, 1);
 
     MIDI.setCallback(midi_callback);
 
@@ -366,5 +366,5 @@ extern "C" void app_main(void) {
     display.setFont(&rismol35);
     display.setTextColor(1);
 
-    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 5, &GUI_TASK, 0);
+    xTaskCreatePinnedToCore(gui_task, "GUI", 16384, NULL, 2, &GUI_TASK, 1);
 }
