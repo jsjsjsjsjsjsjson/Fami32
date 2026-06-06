@@ -6,6 +6,12 @@
 #include "vrc7_synth.h"
 #include "src_config.h"
 
+typedef bool (*fami_timeline_next_event_cb)(uint64_t window_start_sample,
+                                            uint64_t window_end_sample,
+                                            uint64_t *event_sample,
+                                            void *user);
+typedef void (*fami_timeline_dispatch_cb)(uint64_t sample_time, void *user);
+
 class FAMI_PLAYER {
 private:
     FTM_FILE *ftm_data;
@@ -20,6 +26,7 @@ private:
 
     float ticks_row = 0.0f;
     uint32_t row_event_counter = 0;
+    uint64_t audio_sample_clock = 0;
 
     std::vector<int16_t> buf;
 
@@ -70,6 +77,11 @@ public:
     void process_efx_post(fx_t fxdata[4], int c);
     void process_item(unpk_item_t item, int c);
     void process_tick();
+    void process_tick(fami_timeline_next_event_cb next_event,
+                      fami_timeline_dispatch_cb dispatch_event,
+                      void *timeline_user);
+    void reset_audio_sample_clock();
+    uint64_t get_audio_sample_clock() const;
 
     void next_frame(int r);
     void jmp_to_frame(int f);
@@ -87,6 +99,10 @@ public:
     uint32_t get_channel_count() const;
 
 private:
+    void process_tick_events();
+    void begin_channel_tick();
+    void end_channel_tick();
+    void render_tick_segment(size_t dst_offset, size_t sample_count, bool advance_tick_phase);
     void recalculate_ticks_row();
     void setup_channel_modes();
     void sync_vrc7_registers();

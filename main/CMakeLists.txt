@@ -68,7 +68,7 @@ idf_component_register(
         ${INPUT_SOURCES}
         ${STORAGE_SOURCES}
         ${USB_SOURCES}
-    PRIV_REQUIRES spi_flash
+    PRIV_REQUIRES spi_flash esp_timer
     INCLUDE_DIRS
         include
         include/app

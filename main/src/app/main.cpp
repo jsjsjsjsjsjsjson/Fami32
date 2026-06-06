@@ -8,6 +8,7 @@
 #include <dirent.h>
 #include "esp_vfs_fat.h"
 #include "esp_partition.h"
+#include "esp_timer.h"
 #include "gui/gui_common.h"
 #include "gui/gui_input.h"
 #include "boot_check.h"
@@ -50,6 +51,149 @@ KeypadIO keypad(reinterpret_cast<const uint8_t *>(KEYPAD_MAP),
                 KEYPAD_COLS);
 MPR121_Keypad touchKeypad(TOUCHPAD0_ADDRS, TOUCHPAD1_ADDRS);
 
+static constexpr size_t MIDI_TIMELINE_QUEUE_SIZE = 256;
+static constexpr int64_t MIDI_TIMELINE_LATENCY_MARGIN_US = 3000;
+
+typedef struct {
+    uint64_t sample_time;
+    uint32_t sequence;
+    midiEventPacket_t packet;
+} midi_timeline_event_t;
+
+static portMUX_TYPE midi_timeline_lock = portMUX_INITIALIZER_UNLOCKED;
+static midi_timeline_event_t midi_timeline_queue[MIDI_TIMELINE_QUEUE_SIZE];
+static size_t midi_timeline_count = 0;
+static uint32_t midi_timeline_sequence = 0;
+static int64_t midi_timeline_origin_us = 0;
+
+static void handle_midi_packet(midiEventPacket_t packet);
+
+static uint64_t midi_timeline_us_to_samples(int64_t us) {
+    if (us <= 0) {
+        return 0;
+    }
+    return ((uint64_t)us * (uint64_t)SAMP_RATE + 500000ULL) / 1000000ULL;
+}
+
+static int64_t midi_timeline_latency_us() {
+    int engine_speed = ENG_SPEED;
+    if (engine_speed < 1) {
+        engine_speed = 1;
+    }
+    return (1000000LL / engine_speed) + MIDI_TIMELINE_LATENCY_MARGIN_US;
+}
+
+static void midi_timeline_reset() {
+    portENTER_CRITICAL(&midi_timeline_lock);
+    midi_timeline_origin_us = esp_timer_get_time();
+    midi_timeline_count = 0;
+    midi_timeline_sequence = 0;
+    portEXIT_CRITICAL(&midi_timeline_lock);
+}
+
+static bool midi_timeline_is_earlier(const midi_timeline_event_t &a, const midi_timeline_event_t &b) {
+    if (a.sample_time != b.sample_time) {
+        return a.sample_time < b.sample_time;
+    }
+    return a.sequence < b.sequence;
+}
+
+static void midi_timeline_push(midiEventPacket_t packet) {
+    const int64_t now_us = esp_timer_get_time();
+
+    portENTER_CRITICAL(&midi_timeline_lock);
+    if (midi_timeline_origin_us == 0) {
+        midi_timeline_origin_us = now_us;
+    }
+
+    midi_timeline_event_t event = {
+        .sample_time = midi_timeline_us_to_samples((now_us - midi_timeline_origin_us) + midi_timeline_latency_us()),
+        .sequence = midi_timeline_sequence++,
+        .packet = packet,
+    };
+
+    if (midi_timeline_count < MIDI_TIMELINE_QUEUE_SIZE) {
+        midi_timeline_queue[midi_timeline_count++] = event;
+    } else {
+        size_t drop_index = 0;
+        for (size_t i = 1; i < midi_timeline_count; i++) {
+            if (midi_timeline_is_earlier(midi_timeline_queue[i], midi_timeline_queue[drop_index])) {
+                drop_index = i;
+            }
+        }
+        midi_timeline_queue[drop_index] = event;
+    }
+    portEXIT_CRITICAL(&midi_timeline_lock);
+}
+
+static bool midi_timeline_next_event(uint64_t window_start_sample,
+                                     uint64_t window_end_sample,
+                                     uint64_t *event_sample,
+                                     void *user) {
+    (void)user;
+
+    bool found = false;
+    uint64_t best_sample = 0;
+    uint32_t best_sequence = 0;
+
+    portENTER_CRITICAL(&midi_timeline_lock);
+    for (size_t i = 0; i < midi_timeline_count; i++) {
+        const midi_timeline_event_t &event = midi_timeline_queue[i];
+        if (event.sample_time < window_start_sample || event.sample_time >= window_end_sample) {
+            continue;
+        }
+        if (!found ||
+            event.sample_time < best_sample ||
+            (event.sample_time == best_sample && event.sequence < best_sequence)) {
+            found = true;
+            best_sample = event.sample_time;
+            best_sequence = event.sequence;
+        }
+    }
+    portEXIT_CRITICAL(&midi_timeline_lock);
+
+    if (found && event_sample != NULL) {
+        *event_sample = best_sample;
+    }
+    return found;
+}
+
+static bool midi_timeline_pop_due(uint64_t sample_time, midiEventPacket_t *packet) {
+    bool found = false;
+    size_t best_index = 0;
+
+    portENTER_CRITICAL(&midi_timeline_lock);
+    for (size_t i = 0; i < midi_timeline_count; i++) {
+        if (midi_timeline_queue[i].sample_time > sample_time) {
+            continue;
+        }
+        if (!found || midi_timeline_is_earlier(midi_timeline_queue[i], midi_timeline_queue[best_index])) {
+            found = true;
+            best_index = i;
+        }
+    }
+
+    if (found) {
+        *packet = midi_timeline_queue[best_index].packet;
+        midi_timeline_count--;
+        if (best_index < midi_timeline_count) {
+            midi_timeline_queue[best_index] = midi_timeline_queue[midi_timeline_count];
+        }
+    }
+    portEXIT_CRITICAL(&midi_timeline_lock);
+
+    return found;
+}
+
+static void midi_timeline_dispatch_due(uint64_t sample_time, void *user) {
+    (void)user;
+
+    midiEventPacket_t packet;
+    while (midi_timeline_pop_due(sample_time, &packet)) {
+        handle_midi_packet(packet);
+    }
+}
+
 void sound_task(void *arg) {
     player.init(&ftm);
 
@@ -76,9 +220,11 @@ void sound_task(void *arg) {
     i2s_channel_enable(i2s_tx_handle);
 
     size_t written;
+    player.reset_audio_sample_clock();
+    midi_timeline_reset();
 
     for (;;) {
-        player.process_tick();
+        player.process_tick(midi_timeline_next_event, midi_timeline_dispatch_due, NULL);
         for (int i = 0; i < player.get_buf_size(); i++) {
             player.get_buf()[i] = (player.get_buf()[i] * g_vol) >> 5;
         }
@@ -196,10 +342,12 @@ void bayerDitherFade(GfxOledSSD1306 &display, int steps, int factor, bool fadeIn
     }
 }
 
-void midi_callback(midiEventPacket_t packet) {
-    static midiEventData_t e;
+static void handle_midi_packet(midiEventPacket_t packet) {
+    midiEventData_t e;
     memcpy(&e, &packet, 4);
-    ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
+    if (_debug_print) {
+        ESP_LOGI("MIDI_CALLBACK", "%X%X %X%X %02X %02X", e.cn, e.cin, e.ch, e.event, e.note, e.vol);
+    }
     const bool note_on = e.event == MIDI_CIN_NOTE_ON && e.vol > 0;
     const bool note_off = e.event == MIDI_CIN_NOTE_OFF || (e.event == MIDI_CIN_NOTE_ON && e.vol == 0);
     if (edit_mode) {
@@ -261,6 +409,10 @@ void midi_callback(midiEventPacket_t packet) {
         player.channel[channel_sel_pos].note_cut();
         printf("UNKNOW USB MIDI EVENT: 0x%X (%d) -> DATA=%02X %02X\n", e.event, e.event, e.note, e.vol);
     }
+}
+
+void midi_callback(midiEventPacket_t packet) {
+    midi_timeline_push(packet);
 }
 
 #define CONFIG_TOTAL_LEN_MIDI (TUD_CONFIG_DESC_LEN + TUD_MIDI_DESC_LEN)

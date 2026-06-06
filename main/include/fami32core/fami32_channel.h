@@ -47,6 +47,7 @@ private:
     uint8_t dmc_hold_level = 0;
 
     int tick_length;
+    int nominal_tick_length;
     std::vector<int16_t> tick_buf;
     std::vector<uint8_t> apu_level_buf;
 
@@ -144,6 +145,10 @@ public:
     void set_delay_cut(uint8_t t);
 
     void make_tick_sound();
+    void make_tick_sound(bool advance_tick_phase);
+    void begin_tick_update();
+    void render_tick_samples(size_t sample_count, bool advance_tick_phase);
+    void end_tick_update();
     void update_tick();
 
     void set_inst(int n);

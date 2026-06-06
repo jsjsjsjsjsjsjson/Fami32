@@ -187,6 +187,7 @@ void FAMI_CHANNEL::clear_all_fx_flag() {
 
 void FAMI_CHANNEL::init(FTM_FILE* data) {
     tick_length = SAMP_RATE / ENG_SPEED;
+    nominal_tick_length = tick_length;
     ftm_data = data;
     mode = PULSE_125;
     chl_mode = PULSE_125;
@@ -347,6 +348,10 @@ void FAMI_CHANNEL::set_delay_cut(uint8_t t) {
 }
 
 void FAMI_CHANNEL::make_tick_sound() {
+    make_tick_sound(true);
+}
+
+void FAMI_CHANNEL::make_tick_sound(bool advance_tick_phase) {
     if (apu_level_buf.size() != tick_buf.size()) {
         apu_level_buf.resize(tick_buf.size());
     }
@@ -357,7 +362,9 @@ void FAMI_CHANNEL::make_tick_sound() {
 
     int8_t tre_var = 0;
     if (tre_spd && tre_dep) {
-        tre_pos = (tre_pos + tre_spd) & 63;
+        if (advance_tick_phase) {
+            tre_pos = (tre_pos + tre_spd) & 63;
+        }
         tre_var = (vib_table[tre_pos] * tre_dep) / 32;
     }
 
@@ -387,7 +394,9 @@ void FAMI_CHANNEL::make_tick_sound() {
 
         period_rely = get_period();
         if (vib_spd && vib_dep) {
-            vib_pos = (vib_pos + vib_spd) & 63;
+            if (advance_tick_phase) {
+                vib_pos = (vib_pos + vib_spd) & 63;
+            }
             int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
             period_rely = get_period() + vib_var - period_offset;
         }
@@ -434,7 +443,9 @@ void FAMI_CHANNEL::make_tick_sound() {
 
         period_rely = period - period_offset;
         if (vib_spd && vib_dep) {
-            vib_pos = (vib_pos + vib_spd) & 63;
+            if (advance_tick_phase) {
+                vib_pos = (vib_pos + vib_spd) & 63;
+            }
             int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
             period_rely = period - period_offset + vib_var;
         }
@@ -492,7 +503,9 @@ void FAMI_CHANNEL::make_tick_sound() {
         pos_count = (freq / SAMP_RATE) * 32;
 
         if (vib_spd && vib_dep) {
-            vib_pos = (vib_pos + vib_spd) & 63;
+            if (advance_tick_phase) {
+                vib_pos = (vib_pos + vib_spd) & 63;
+            }
             int8_t vib_var = (vib_table[vib_pos] * vib_dep) / 16;
             period_rely = period - period_offset + vib_var;
             pos_count = (period2freq(period_rely) / SAMP_RATE) * 32;
@@ -639,7 +652,7 @@ void FAMI_CHANNEL::make_tick_sound() {
     }
 }
 
-void FAMI_CHANNEL::update_tick() {
+void FAMI_CHANNEL::begin_tick_update() {
     if (mode != DPCM_SAMPLE) {
         if (inst_proc.get_sequ_enable(PIT_SEQU) || inst_proc.get_sequ_enable(HPI_SEQU)) {
             if (is_tone_mode(mode) || mode == FDS_WAVE || is_vrc6_mode(mode)) {
@@ -689,9 +702,21 @@ void FAMI_CHANNEL::update_tick() {
             delay_cut_status = false;
         }
     }
+}
 
-    make_tick_sound();
+void FAMI_CHANNEL::render_tick_samples(size_t sample_count, bool advance_tick_phase) {
+    tick_length = (int)sample_count;
+    if (tick_buf.size() < sample_count) {
+        tick_buf.resize(sample_count);
+    }
+    if (apu_level_buf.size() < sample_count) {
+        apu_level_buf.resize(sample_count);
+    }
 
+    make_tick_sound(advance_tick_phase);
+}
+
+void FAMI_CHANNEL::end_tick_update() {
     if (mode != DPCM_SAMPLE) {
         if (slide_up) {
             set_period(get_period() + (mode == FDS_WAVE ? slide_up : -slide_up));
@@ -787,6 +812,12 @@ void FAMI_CHANNEL::update_tick() {
     if (mode != VRC7_FM) {
         inst_proc.update_tick();
     }
+}
+
+void FAMI_CHANNEL::update_tick() {
+    begin_tick_update();
+    render_tick_samples((size_t)nominal_tick_length, true);
+    end_tick_update();
 }
 
 void FAMI_CHANNEL::set_inst(int n) {

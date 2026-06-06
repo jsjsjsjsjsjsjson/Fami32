@@ -324,6 +324,136 @@ void FAMI_PLAYER::mix_all_channel() {
     }
 }
 
+void FAMI_PLAYER::process_tick_events() {
+    if (!play_status) {
+        return;
+    }
+
+    for (uint32_t c = 0; c < get_channel_count(); c++) {
+        if (!delay_status[c]) {
+            continue;
+        }
+        if (delay_count[c]) {
+            delay_count[c]--;
+            if (!delay_count[c]) {
+                process_item(ft_items[c], c);
+                delay_status[c] = false;
+            }
+        }
+    }
+
+    while (tick_accumulator >= ticks_row) {
+        defer_row_navigation = true;
+        for (uint32_t c = 0; c < get_channel_count(); c++) {
+            ft_items[c] = ftm_data->get_pt_item(c, ftm_data->get_frame_map(frame, c), row);
+            // process_efx(ft_items[c].fxdata, c);
+            process_delay_efx(ft_items[c].fxdata, c);
+            if (!delay_count[c])
+                process_item(ft_items[c], c);
+        }
+        defer_row_navigation = false;
+
+        finish_row_navigation();
+        row_event_counter++;
+
+        tick_accumulator -= ticks_row;
+    }
+
+    tick_accumulator += 1.0f;
+}
+
+void FAMI_PLAYER::begin_channel_tick() {
+    uint32_t count = get_channel_count();
+    for (uint32_t c = 0; c < count; c++) {
+        channel[c].begin_tick_update();
+    }
+}
+
+void FAMI_PLAYER::end_channel_tick() {
+    uint32_t count = get_channel_count();
+    for (uint32_t c = 0; c < count; c++) {
+        channel[c].end_tick_update();
+    }
+}
+
+void FAMI_PLAYER::render_tick_segment(size_t dst_offset, size_t sample_count, bool advance_tick_phase) {
+    if (sample_count == 0 || dst_offset >= buf.size()) {
+        return;
+    }
+    if (dst_offset + sample_count > buf.size()) {
+        sample_count = buf.size() - dst_offset;
+    }
+
+    uint32_t count = get_channel_count();
+    for (uint32_t c = 0; c < count; c++) {
+        channel[c].render_tick_samples(sample_count, advance_tick_phase);
+    }
+
+    bool use_vrc7 = ftm_data != NULL && ftm_data->vrc7_enabled() && vrc7.is_ready();
+    if (use_vrc7) {
+        sync_vrc7_registers();
+    }
+
+    for (size_t i = 0; i < sample_count; i++) {
+        uint8_t pulse1 = mute[0] ? 0 : channel[0].get_apu_level_buf()[i];
+        uint8_t pulse2 = mute[1] ? 0 : channel[1].get_apu_level_buf()[i];
+        uint8_t triangle = mute[2] ? 8 : channel[2].get_apu_level_buf()[i];
+        uint8_t noise = mute[3] ? 0 : channel[3].get_apu_level_buf()[i];
+        uint8_t dmc = mute[4] ? 0 : channel[4].get_apu_level_buf()[i];
+
+        int32_t mixed = nes_mix_sample(pulse1, pulse2, triangle, noise, dmc);
+        if (use_vrc7) {
+            mixed += vrc7.calc();
+
+            int vrc7_c = ftm_data->vrc7_channel_index();
+            for (uint8_t fm = 0; fm < FAMI32_VRC7_CHANNELS; ++fm) {
+                uint8_t c = vrc7_c + fm;
+                if (c < count && i < channel[c].get_buf_size()) {
+                    channel[c].get_buf()[i] = mute[c] ? 0 : vrc7.get_channel_sample(fm);
+                }
+            }
+        }
+
+        if (ftm_data != NULL && ftm_data->fds_enabled()) {
+            int fds_c = ftm_data->fds_channel_index();
+            if (fds_c >= 0 && fds_c < (int)count && i < channel[fds_c].get_buf_size() && !mute[fds_c]) {
+                mixed += channel[fds_c].get_buf()[i];
+            }
+        }
+        if (ftm_data != NULL && ftm_data->mmc5_enabled()) {
+            int mmc5_c = ftm_data->mmc5_channel_index();
+            if (mmc5_c >= 0) {
+                uint8_t mmc5_pulse1 = 0;
+                uint8_t mmc5_pulse2 = 0;
+                if (mmc5_c < (int)count && i < channel[mmc5_c].get_buf_size() && !mute[mmc5_c]) {
+                    mmc5_pulse1 = channel[mmc5_c].get_apu_level_buf()[i];
+                }
+                uint8_t mmc5_c2 = mmc5_c + 1;
+                if (mmc5_c2 < count && i < channel[mmc5_c2].get_buf_size() && !mute[mmc5_c2]) {
+                    mmc5_pulse2 = channel[mmc5_c2].get_apu_level_buf()[i];
+                }
+                mixed += nes_pulse_mix_sample(mmc5_pulse1, mmc5_pulse2);
+            }
+        }
+        if (ftm_data != NULL && ftm_data->vrc6_enabled()) {
+            int vrc6_c = ftm_data->vrc6_channel_index();
+            if (vrc6_c >= 0) {
+                for (uint8_t v = 0; v < FAMI32_VRC6_CHANNELS; ++v) {
+                    uint8_t c = vrc6_c + v;
+                    if (c < count && i < channel[c].get_buf_size() && !mute[c]) {
+                        if (v == 2) mixed += ((int32_t)channel[c].get_buf()[i] * 8) >> 2;
+                        else mixed += ((int32_t)channel[c].get_buf()[i] * 3) >> 1;
+                    }
+                }
+            }
+        }
+        int16_t r = clamp_i16(mixed);
+        r = hpf.process(r);
+        r = lpf.process(r);
+        buf[dst_offset + i] = r;
+    }
+}
+
 uint8_t FAMI_PLAYER::get_chl_vol(int n) {
     if (n < 0 || n >= (int)get_channel_count()) return 0;
     return channel[n].get_vol();
@@ -475,43 +605,59 @@ void FAMI_PLAYER::process_item(unpk_item_t item, int c) {
 }
 
 void FAMI_PLAYER::process_tick() {
-    // printf("PROCESS TICK, STATUS -> %d\n", play_status);
-    if (!play_status) {
-        mix_all_channel();
-        return;
+    process_tick(NULL, NULL, NULL);
+}
+
+void FAMI_PLAYER::process_tick(fami_timeline_next_event_cb next_event,
+                               fami_timeline_dispatch_cb dispatch_event,
+                               void *timeline_user) {
+    const size_t total_samples = buf.size();
+    const uint64_t window_start = audio_sample_clock;
+    const uint64_t window_end = window_start + total_samples;
+
+    if (dispatch_event != NULL) {
+        dispatch_event(window_start, timeline_user);
     }
-    for (uint32_t c = 0; c < get_channel_count(); c++) {
-        if (!delay_status[c]) {
-            continue;
+
+    process_tick_events();
+    begin_channel_tick();
+
+    size_t offset = 0;
+    bool advance_tick_phase = true;
+    while (offset < total_samples) {
+        uint64_t event_sample = 0;
+        bool has_event = false;
+        if (next_event != NULL) {
+            has_event = next_event(window_start + offset, window_end, &event_sample, timeline_user);
         }
-        if (delay_count[c]) {
-            delay_count[c]--;
-            if (!delay_count[c]) {
-                process_item(ft_items[c], c);
-                delay_status[c] = false;
+
+        size_t next_offset = total_samples;
+        if (has_event && event_sample < window_end) {
+            next_offset = (size_t)(event_sample - window_start);
+            if (next_offset < offset) {
+                next_offset = offset;
             }
         }
-    }
 
-    while (tick_accumulator >= ticks_row) {
-        defer_row_navigation = true;
-        for (uint32_t c = 0; c < get_channel_count(); c++) {
-            ft_items[c] = ftm_data->get_pt_item(c, ftm_data->get_frame_map(frame, c), row);
-            // process_efx(ft_items[c].fxdata, c);
-            process_delay_efx(ft_items[c].fxdata, c);
-            if (!delay_count[c])
-                process_item(ft_items[c], c);
+        render_tick_segment(offset, next_offset - offset, advance_tick_phase);
+        advance_tick_phase = false;
+        offset = next_offset;
+
+        if (has_event && dispatch_event != NULL && offset < total_samples) {
+            dispatch_event(window_start + offset, timeline_user);
         }
-        defer_row_navigation = false;
-
-        finish_row_navigation();
-        row_event_counter++;
-
-        tick_accumulator -= ticks_row;
     }
 
-    tick_accumulator += 1.0f;
-    mix_all_channel();
+    end_channel_tick();
+    audio_sample_clock = window_end;
+}
+
+void FAMI_PLAYER::reset_audio_sample_clock() {
+    audio_sample_clock = 0;
+}
+
+uint64_t FAMI_PLAYER::get_audio_sample_clock() const {
+    return audio_sample_clock;
 }
 
 void FAMI_PLAYER::next_frame(int r) {
