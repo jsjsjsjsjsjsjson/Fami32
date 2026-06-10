@@ -11,6 +11,7 @@ constexpr uint32_t FTM_MAX_DPCM_SAMPLE_SIZE = 0x0FF1;
 constexpr uint8_t FTM_CH_ID_VRC6_PULSE1 = 5;
 constexpr uint8_t FTM_CH_ID_FDS = 19;
 constexpr uint8_t FTM_CH_ID_MMC5_SQUARE1 = 8;
+constexpr uint8_t FTM_CH_ID_N163_CH1 = 11;
 
 using SequenceBank = std::vector<std::vector<sequences_t>>;
 
@@ -62,7 +63,17 @@ uint32_t normalized_dpcm_size(uint32_t size) {
     return padded;
 }
 
-uint32_t channel_count_for_ext(uint8_t ext_chip) {
+uint8_t clamp_n163_channels(uint32_t count) {
+    if (count < 1) {
+        return 1;
+    }
+    if (count > FAMI32_N163_MAX_CHANNELS) {
+        return FAMI32_N163_MAX_CHANNELS;
+    }
+    return (uint8_t)count;
+}
+
+uint32_t channel_count_for_ext(uint8_t ext_chip, uint8_t n163_channels) {
     uint32_t channels = FAMI32_BASE_CHANNELS;
     if (ext_chip & FTM_EXT_VRC6) {
         channels += FAMI32_VRC6_CHANNELS;
@@ -75,6 +86,9 @@ uint32_t channel_count_for_ext(uint8_t ext_chip) {
     }
     if (ext_chip & FTM_EXT_FDS) {
         channels += FAMI32_FDS_CHANNELS;
+    }
+    if (ext_chip & FTM_EXT_N163) {
+        channels += clamp_n163_channels(n163_channels);
     }
     return channels;
 }
@@ -124,7 +138,27 @@ int fds_channel_index_for_ext(uint8_t ext_chip) {
     return index;
 }
 
-void fill_channel_layout(HEADER_BLOCK &header, uint8_t ext_chip) {
+int n163_channel_index_for_ext(uint8_t ext_chip) {
+    if ((ext_chip & FTM_EXT_N163) == 0) {
+        return -1;
+    }
+    int index = FAMI32_BASE_CHANNELS;
+    if (ext_chip & FTM_EXT_VRC6) {
+        index += FAMI32_VRC6_CHANNELS;
+    }
+    if (ext_chip & FTM_EXT_VRC7) {
+        index += FAMI32_VRC7_CHANNELS;
+    }
+    if (ext_chip & FTM_EXT_MMC5) {
+        index += FAMI32_MMC5_CHANNELS;
+    }
+    if (ext_chip & FTM_EXT_FDS) {
+        index += FAMI32_FDS_CHANNELS;
+    }
+    return index;
+}
+
+void fill_channel_layout(HEADER_BLOCK &header, uint8_t ext_chip, uint8_t n163_channels) {
     memset(header.ch_id, 0, sizeof(header.ch_id));
 
     header.ch_id[0] = 0;
@@ -158,6 +192,14 @@ void fill_channel_layout(HEADER_BLOCK &header, uint8_t ext_chip) {
     if (fds_index >= 0 && fds_index < FAMI32_MAX_CHANNELS) {
         header.ch_id[fds_index] = FTM_CH_ID_FDS;
     }
+
+    int n163_index = n163_channel_index_for_ext(ext_chip);
+    if (n163_index >= 0) {
+        uint8_t count = clamp_n163_channels(n163_channels);
+        for (uint8_t i = 0; i < count && n163_index + i < FAMI32_MAX_CHANNELS; ++i) {
+            header.ch_id[n163_index + i] = FTM_CH_ID_N163_CH1 + i;
+        }
+    }
 }
 
 uint32_t fds_sequence_payload_size(const fds_sequence_t &seq) {
@@ -181,6 +223,20 @@ uint32_t instrument_payload_size(const instrument_t &inst) {
             size += fds_sequence_payload_size(inst.fds_seq[i]);
         }
         return size;
+    }
+    if (inst.type == INST_N163) {
+        uint32_t wave_size = inst.n163_wave_size;
+        if (wave_size > FAMI32_N163_WAVE_SIZE) {
+            wave_size = FAMI32_N163_WAVE_SIZE;
+        }
+        uint32_t wave_count = inst.n163_wave_count;
+        if (wave_count < 1) {
+            wave_count = 1;
+        }
+        if (wave_count > FAMI32_N163_WAVE_MAX) {
+            wave_count = FAMI32_N163_WAVE_MAX;
+        }
+        return 4 + (2 * FTM_SEQUENCE_TYPES) + (4 * 3) + (wave_size * wave_count);
     }
     return 4 + (2 * FTM_SEQUENCE_TYPES) + (3 * FTM_DPCM_NOTES);
 }
@@ -327,6 +383,7 @@ void FTM_FILE::new_ftm() {
     INSTRUMENT_BLOCK inst_new;
     SEQUENCES_BLOCK seq_new;
     SEQUENCES_BLOCK vrc6_seq_new;
+    SEQUENCES_BLOCK n163_seq_new;
     FRAME_BLOCK fr_new;
     PATTERN_BLOCK pt_new;
     DPCM_SAMPLE_BLOCK dpcm_new;
@@ -339,10 +396,12 @@ void FTM_FILE::new_ftm() {
     seq_block = seq_new;
     vrc6_seq_block = vrc6_seq_new;
     init_sequence_block(vrc6_seq_block, "SEQUENCES_VRC6");
+    n163_seq_block = n163_seq_new;
+    init_sequence_block(n163_seq_block, "SEQUENCES_N163");
     fr_block = fr_new;
     pt_block = pt_new;
     dpcm_block = dpcm_new;
-    fill_channel_layout(he_block, pr_block.ext_chip);
+    fill_channel_layout(he_block, pr_block.ext_chip, pr_block.n163_channels);
 
     frames.clear();
     new_frame();
@@ -368,6 +427,8 @@ void FTM_FILE::new_ftm() {
     sequences.resize(FTM_SEQUENCE_TYPES);
     vrc6_sequences.clear();
     vrc6_sequences.resize(FTM_SEQUENCE_TYPES);
+    n163_sequences.clear();
+    n163_sequences.resize(FTM_SEQUENCE_TYPES);
     create_new_inst();
 }
 
@@ -439,6 +500,20 @@ void FTM_FILE::set_inst_type(int n, uint8_t type) {
     } else if (type == INST_FDS) {
         inst->type = INST_FDS;
         inst->seq_count = FAMI32_FDS_SEQUENCE_TYPES;
+    } else if (type == INST_N163) {
+        inst->type = INST_N163;
+        inst->seq_count = FTM_SEQUENCE_TYPES;
+        if (inst->n163_wave_size < 1 || inst->n163_wave_size > FAMI32_N163_WAVE_SIZE) {
+            inst->n163_wave_size = FAMI32_N163_WAVE_SIZE;
+        }
+        if (inst->n163_wave_count < 1 || inst->n163_wave_count > FAMI32_N163_WAVE_MAX) {
+            inst->n163_wave_count = 1;
+        }
+        for (uint32_t i = 0; i < FTM_SEQUENCE_TYPES; ++i) {
+            if (inst->seq_index[i].seq_index >= n163_sequences[i].size()) {
+                inst->seq_index[i].seq_index = n163_sequences[i].size();
+            }
+        }
     } else {
         inst->type = INST_2A03;
         inst->seq_count = FTM_SEQUENCE_TYPES;
@@ -541,13 +616,48 @@ bool FTM_FILE::is_mmc5_channel(int c) const {
     return first >= 0 && c >= first && c < first + FAMI32_MMC5_CHANNELS;
 }
 
+bool FTM_FILE::n163_enabled() const {
+    return (pr_block.ext_chip & FTM_EXT_N163) != 0;
+}
+
+void FTM_FILE::set_n163_enabled(bool enabled) {
+    if (enabled) {
+        pr_block.ext_chip |= FTM_EXT_N163;
+        pr_block.n163_channels = clamp_n163_channels(pr_block.n163_channels);
+    } else {
+        pr_block.ext_chip &= ~FTM_EXT_N163;
+    }
+    apply_channel_layout();
+}
+
+int FTM_FILE::n163_channel_index() const {
+    return n163_channel_index_for_ext(pr_block.ext_chip);
+}
+
+uint8_t FTM_FILE::n163_channel_count() const {
+    return clamp_n163_channels(pr_block.n163_channels);
+}
+
+void FTM_FILE::set_n163_channel_count(uint8_t count) {
+    pr_block.n163_channels = clamp_n163_channels(count);
+    if (n163_enabled()) {
+        apply_channel_layout();
+    }
+}
+
+bool FTM_FILE::is_n163_channel(int c) const {
+    int first = n163_channel_index();
+    uint8_t count = n163_channel_count();
+    return first >= 0 && c >= first && c < first + count;
+}
+
 void FTM_FILE::apply_channel_layout() {
-    uint32_t new_count = channel_count_for_ext(pr_block.ext_chip);
+    uint32_t new_count = channel_count_for_ext(pr_block.ext_chip, pr_block.n163_channels);
     if (new_count > FAMI32_MAX_CHANNELS) {
         new_count = FAMI32_MAX_CHANNELS;
     }
     resize_channel_storage(new_count);
-    fill_channel_layout(he_block, pr_block.ext_chip);
+    fill_channel_layout(he_block, pr_block.ext_chip, pr_block.n163_channels);
 }
 
 void FTM_FILE::resize_channel_storage(uint32_t new_count) {
@@ -653,6 +763,9 @@ int FTM_FILE::save_as_ftm(const char *filename) {
     if (vrc6_enabled()) {
         write_vrc6_sequences();
     }
+    if (n163_enabled()) {
+        write_n163_sequences();
+    }
 
     fwrite("\0END", 1, 4, ftm_file);
 
@@ -674,19 +787,68 @@ void FTM_FILE::write_file_header() {
 }
 
 void FTM_FILE::write_param_block() {
-    pr_block.size = 29;
-    fwrite(&pr_block, sizeof(pr_block), 1, ftm_file);
+    pr_block.version = 6;
+    pr_block.n163_channels = clamp_n163_channels(pr_block.n163_channels);
+    pr_block.size = 29 + (n163_enabled() ? 4 : 0);
+    fwrite(pr_block.id, 1, 16, ftm_file);
+    write_u32(ftm_file, pr_block.version);
+    write_u32(ftm_file, pr_block.size);
+    write_u8(ftm_file, pr_block.ext_chip);
+    write_u32(ftm_file, pr_block.channel);
+    write_u32(ftm_file, pr_block.machine);
+    write_u32(ftm_file, pr_block.e_speed);
+    write_u32(ftm_file, pr_block.v_style);
+    write_u32(ftm_file, pr_block.hl1);
+    write_u32(ftm_file, pr_block.hl2);
+    if (n163_enabled()) {
+        write_u32(ftm_file, pr_block.n163_channels);
+    }
+    write_u32(ftm_file, pr_block.s_split);
 }
 
 int FTM_FILE::read_param_block() {
-    fread(&pr_block, 1, sizeof(pr_block), ftm_file);
+    pr_block = PARAMS_BLOCK();
+    fread(pr_block.id, 1, 16, ftm_file);
+    uint32_t value = 0;
+    read_u32(ftm_file, &value);
+    pr_block.version = value;
+    read_u32(ftm_file, &value);
+    pr_block.size = value;
 
-    if (pr_block.ext_chip & ~(FTM_EXT_VRC6 | FTM_EXT_VRC7 | FTM_EXT_FDS | FTM_EXT_MMC5)) {
-        DBG_PRINTF("Only 2A03, VRC6, VRC7, FDS and MMC5 FTM files are supported\n");
+    size_t payload_start = ftell(ftm_file);
+    read_u8(ftm_file, &pr_block.ext_chip);
+    read_u32(ftm_file, &value);
+    pr_block.channel = value;
+    read_u32(ftm_file, &value);
+    pr_block.machine = value;
+    read_u32(ftm_file, &value);
+    pr_block.e_speed = value;
+    read_u32(ftm_file, &value);
+    pr_block.v_style = value;
+    read_u32(ftm_file, &value);
+    pr_block.hl1 = value;
+    read_u32(ftm_file, &value);
+    pr_block.hl2 = value;
+    if (pr_block.version >= 5 && (pr_block.ext_chip & FTM_EXT_N163)) {
+        read_u32(ftm_file, &value);
+        pr_block.n163_channels = value;
+    }
+    pr_block.n163_channels = clamp_n163_channels(pr_block.n163_channels);
+    if (pr_block.version >= 6) {
+        read_u32(ftm_file, &value);
+        pr_block.s_split = value;
+    }
+    size_t payload_read = ftell(ftm_file) - payload_start;
+    if (pr_block.size > payload_read) {
+        fseek(ftm_file, pr_block.size - payload_read, SEEK_CUR);
+    }
+
+    if (pr_block.ext_chip & ~(FTM_EXT_VRC6 | FTM_EXT_VRC7 | FTM_EXT_FDS | FTM_EXT_MMC5 | FTM_EXT_N163)) {
+        DBG_PRINTF("Only 2A03, VRC6, VRC7, FDS, MMC5 and N163 FTM files are supported\n");
         return NO_SUPPORT_EXTCHIP;
     }
 
-    uint32_t expected_channels = channel_count_for_ext(pr_block.ext_chip);
+    uint32_t expected_channels = channel_count_for_ext(pr_block.ext_chip, pr_block.n163_channels);
     if (expected_channels > FAMI32_MAX_CHANNELS) {
         return NO_SUPPORT_EXTCHIP;
     }
@@ -703,6 +865,7 @@ int FTM_FILE::read_param_block() {
     DBG_PRINTF("SIZE: %ld\n", pr_block.size);
     DBG_PRINTF("EXTRA_CHIP: 0x%X\n", pr_block.ext_chip);
     DBG_PRINTF("CHANNELS: %ld\n", pr_block.channel);
+    DBG_PRINTF("N163_CHANNELS: %ld\n", pr_block.n163_channels);
     DBG_PRINTF("MACHINE: 0x%lX\n", pr_block.machine);
     DBG_PRINTF("E_SPEED: %ld\n", pr_block.e_speed);
     DBG_PRINTF("V_STYLE: %ld\n", pr_block.v_style);
@@ -833,6 +996,41 @@ void FTM_FILE::read_instrument_data() {
                 read_fds_sequence(ftm_file, inst_tmp.fds_seq[seq]);
             }
             inst_tmp.seq_count = FAMI32_FDS_SEQUENCE_TYPES;
+        } else if (inst_tmp.type == INST_N163) {
+            read_u32(ftm_file, &u32_value);
+            inst_tmp.seq_count = u32_value;
+            if (inst_tmp.seq_count > FTM_SEQUENCE_TYPES) {
+                inst_tmp.seq_count = FTM_SEQUENCE_TYPES;
+            }
+            for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
+                uint8_t enable = 0;
+                uint8_t index = 0;
+                read_u8(ftm_file, &enable);
+                read_u8(ftm_file, &index);
+                inst_tmp.seq_index[seq].enable = enable != 0;
+                inst_tmp.seq_index[seq].seq_index = index;
+            }
+            read_u32(ftm_file, &u32_value);
+            inst_tmp.n163_wave_size = u32_value;
+            read_u32(ftm_file, &u32_value);
+            inst_tmp.n163_wave_pos = u32_value;
+            read_u32(ftm_file, &u32_value);
+            inst_tmp.n163_wave_count = u32_value;
+            uint32_t read_wave_size = inst_tmp.n163_wave_size;
+            uint32_t read_wave_count = inst_tmp.n163_wave_count;
+            if (inst_tmp.n163_wave_size < 1) inst_tmp.n163_wave_size = 1;
+            if (inst_tmp.n163_wave_size > FAMI32_N163_WAVE_SIZE) inst_tmp.n163_wave_size = FAMI32_N163_WAVE_SIZE;
+            if (inst_tmp.n163_wave_count < 1) inst_tmp.n163_wave_count = 1;
+            if (inst_tmp.n163_wave_count > FAMI32_N163_WAVE_MAX) inst_tmp.n163_wave_count = FAMI32_N163_WAVE_MAX;
+            for (uint32_t wave = 0; wave < read_wave_count; ++wave) {
+                for (uint32_t sample = 0; sample < read_wave_size; ++sample) {
+                    uint8_t value = 0;
+                    read_u8(ftm_file, &value);
+                    if (wave < FAMI32_N163_WAVE_MAX && sample < FAMI32_N163_WAVE_SIZE) {
+                        inst_tmp.n163_wave[wave][sample] = value & 0x0F;
+                    }
+                }
+            }
         } else if (inst_tmp.type == INST_VRC6) {
             read_u32(ftm_file, &u32_value);
             inst_tmp.seq_count = u32_value;
@@ -888,6 +1086,8 @@ void FTM_FILE::read_instrument_data() {
             DBG_PRINTF("VRC7 PATCH: %ld\n", inst_tmp.vrc7_patch);
         } else if (inst_tmp.type == INST_FDS) {
             DBG_PRINTF("FDS MOD SPD:%ld DEP:%ld DLY:%ld\n", inst_tmp.fds_mod_speed, inst_tmp.fds_mod_depth, inst_tmp.fds_mod_delay);
+        } else if (inst_tmp.type == INST_N163) {
+            DBG_PRINTF("N163 WAVE SIZE:%ld POS:%ld COUNT:%ld\n", inst_tmp.n163_wave_size, inst_tmp.n163_wave_pos, inst_tmp.n163_wave_count);
         } else {
             DBG_PRINTF("SEQU COUNT: %ld\n", inst_tmp.seq_count);
         }
@@ -906,7 +1106,7 @@ void FTM_FILE::write_instrument_data() {
             continue;
         }
         instrument_t &inst = instrument[i];
-        if (inst.type != INST_VRC7 && inst.type != INST_VRC6 && inst.type != INST_FDS) {
+        if (inst.type != INST_VRC7 && inst.type != INST_VRC6 && inst.type != INST_FDS && inst.type != INST_N163) {
             inst.type = INST_2A03;
             inst.seq_count = FTM_SEQUENCE_TYPES;
         }
@@ -933,6 +1133,26 @@ void FTM_FILE::write_instrument_data() {
             write_u32(ftm_file, inst.fds_mod_delay);
             for (uint8_t seq = 0; seq < FAMI32_FDS_SEQUENCE_TYPES; ++seq) {
                 write_fds_sequence(ftm_file, inst.fds_seq[seq]);
+            }
+        } else if (inst.type == INST_N163) {
+            inst.seq_count = FTM_SEQUENCE_TYPES;
+            if (inst.n163_wave_size < 1) inst.n163_wave_size = 1;
+            if (inst.n163_wave_size > FAMI32_N163_WAVE_SIZE) inst.n163_wave_size = FAMI32_N163_WAVE_SIZE;
+            if (inst.n163_wave_count < 1) inst.n163_wave_count = 1;
+            if (inst.n163_wave_count > FAMI32_N163_WAVE_MAX) inst.n163_wave_count = FAMI32_N163_WAVE_MAX;
+            if (inst.n163_wave_pos > 127) inst.n163_wave_pos = 127;
+            write_u32(ftm_file, inst.seq_count);
+            for (uint32_t seq = 0; seq < FTM_SEQUENCE_TYPES; ++seq) {
+                write_u8(ftm_file, inst.seq_index[seq].enable ? 1 : 0);
+                write_u8(ftm_file, inst.seq_index[seq].seq_index);
+            }
+            write_u32(ftm_file, inst.n163_wave_size);
+            write_u32(ftm_file, inst.n163_wave_pos);
+            write_u32(ftm_file, inst.n163_wave_count);
+            for (uint32_t wave = 0; wave < inst.n163_wave_count; ++wave) {
+                for (uint32_t sample = 0; sample < inst.n163_wave_size; ++sample) {
+                    write_u8(ftm_file, inst.n163_wave[wave][sample] & 0x0F);
+                }
             }
         } else {
             write_u32(ftm_file, inst.seq_count);
@@ -981,6 +1201,67 @@ void FTM_FILE::read_vrc6_sequences_data() {
     read_sequence_bank(ftm_file, vrc6_seq_block, vrc6_sequences);
 }
 
+void FTM_FILE::write_n163_sequences() {
+    init_sequence_block(n163_seq_block, "SEQUENCES_N163");
+    n163_seq_block.version = 1;
+    size_t block_start_addr = ftell(ftm_file);
+    int sequ_num = 0;
+    fwrite(&n163_seq_block, sizeof(n163_seq_block), 1, ftm_file);
+
+    size_t tol_size = 4;
+    for (uint32_t type = 0; type < FTM_SEQUENCE_TYPES; type++) {
+        for (int i = 0; i < n163_sequences[type].size(); i++) {
+            if (n163_sequences[type][i].length) {
+                n163_sequences[type][i].type = type;
+                n163_sequences[type][i].index = i;
+                write_u32(ftm_file, n163_sequences[type][i].index);
+                write_u32(ftm_file, n163_sequences[type][i].type);
+                write_u8(ftm_file, n163_sequences[type][i].length);
+                write_u32(ftm_file, n163_sequences[type][i].loop);
+                write_u32(ftm_file, n163_sequences[type][i].release);
+                write_u32(ftm_file, n163_sequences[type][i].setting);
+                fwrite(n163_sequences[type][i].data.data(), 1, n163_sequences[type][i].length, ftm_file);
+                tol_size += 21 + n163_sequences[type][i].length;
+                sequ_num++;
+            }
+        }
+    }
+
+    size_t block_end_addr = ftell(ftm_file);
+    n163_seq_block.size = tol_size;
+    n163_seq_block.sequ_num = sequ_num;
+    fseek(ftm_file, block_start_addr, SEEK_SET);
+    fwrite(&n163_seq_block, sizeof(n163_seq_block), 1, ftm_file);
+    fseek(ftm_file, block_end_addr, SEEK_SET);
+}
+
+void FTM_FILE::read_n163_sequences_data() {
+    n163_sequences.clear();
+    n163_sequences.resize(FTM_SEQUENCE_TYPES);
+    if (n163_seq_block.sequ_num == 0) {
+        return;
+    }
+
+    DBG_PRINTF("\nREADING SEQUENCES_N163, COUNT=%ld\n", n163_seq_block.sequ_num);
+    for (int i = 0; i < n163_seq_block.sequ_num; i++) {
+        sequences_t sequ_tmp;
+        read_u32(ftm_file, &sequ_tmp.index);
+        read_u32(ftm_file, &sequ_tmp.type);
+        read_u8(ftm_file, &sequ_tmp.length);
+        read_u32(ftm_file, &sequ_tmp.loop);
+        read_u32(ftm_file, &sequ_tmp.release);
+        read_u32(ftm_file, &sequ_tmp.setting);
+        sequ_tmp.data.resize(sequ_tmp.length);
+        fread(sequ_tmp.data.data(), 1, sequ_tmp.length, ftm_file);
+        if (sequ_tmp.type < FTM_SEQUENCE_TYPES) {
+            if (sequ_tmp.index >= n163_sequences[sequ_tmp.type].size()) {
+                n163_sequences[sequ_tmp.type].resize(sequ_tmp.index + 1);
+            }
+            n163_sequences[sequ_tmp.type][sequ_tmp.index] = sequ_tmp;
+        }
+    }
+}
+
 void FTM_FILE::write_sequences() {
     size_t block_start_addr = ftell(ftm_file);
     int sequ_num = 0;
@@ -1020,11 +1301,11 @@ void FTM_FILE::write_sequences() {
 }
 
 void FTM_FILE::read_sequences_data() {
+    sequences.clear();
+    sequences.resize(FTM_SEQUENCE_TYPES);
     if (seq_block.sequ_num == 0) {
         return;
     }
-    sequences.clear();
-    sequences.resize(FTM_SEQUENCE_TYPES);
     std::vector<std::vector<uint32_t>> index_map(seq_block.sequ_num, std::vector<uint32_t>(2, 0));
     DBG_PRINTF("\nREADING SEQUENCES, COUNT=%ld\n", seq_block.sequ_num);
     for (int i = 0; i < seq_block.sequ_num; i++) {
@@ -1289,6 +1570,9 @@ void FTM_FILE::read_dpcm_block() {
     dpcm_block.sample_num = 0;
     size_t read = fread(dpcm_block.id, 1, 16, ftm_file);
     if (read < 16 || strncmp(dpcm_block.id, "DPCM SAMPLES", 16)) {
+        if (read > 0) {
+            fseek(ftm_file, -(long)read, SEEK_CUR);
+        }
         dpcm_block = DPCM_SAMPLE_BLOCK();
         dpcm_block.size = 0;
         dpcm_block.sample_num = 0;
@@ -1464,6 +1748,10 @@ int FTM_FILE::read_ftm_all() {
     read_dpcm_block();
     read_dpcm_data();
 
+    init_sequence_block(n163_seq_block, "SEQUENCES_N163");
+    n163_sequences.clear();
+    n163_sequences.resize(FTM_SEQUENCE_TYPES);
+
     while (true) {
         SEQUENCES_BLOCK extra_block;
         size_t read_size = fread(&extra_block, 1, sizeof(extra_block), ftm_file);
@@ -1473,6 +1761,9 @@ int FTM_FILE::read_ftm_all() {
         if (!strncmp(extra_block.id, "SEQUENCES_VRC6", 16)) {
             vrc6_seq_block = extra_block;
             read_vrc6_sequences_data();
+        } else if (!strncmp(extra_block.id, "SEQUENCES_N163", 16)) {
+            n163_seq_block = extra_block;
+            read_n163_sequences_data();
         } else {
             fseek(ftm_file, extra_block.size, SEEK_CUR);
         }
@@ -1533,18 +1824,28 @@ sequences_t* FTM_FILE::get_sequ(int type, int index) {
 }
 
 int8_t FTM_FILE::get_inst_sequ_data(instrument_t *inst, int type, int index, int seq_index) {
-    SequenceBank &bank = (inst != NULL && inst->type == INST_VRC6) ? vrc6_sequences : sequences;
-    if (type >= bank.size()) return 0;
-    if (index >= bank[type].size()) return 0;
-    if (seq_index >= bank[type][index].data.size()) return 0;
-    return bank[type][index].data[seq_index];
+    SequenceBank *bank = &sequences;
+    if (inst != NULL && inst->type == INST_VRC6) {
+        bank = &vrc6_sequences;
+    } else if (inst != NULL && inst->type == INST_N163) {
+        bank = &n163_sequences;
+    }
+    if (type >= bank->size()) return 0;
+    if (index >= (*bank)[type].size()) return 0;
+    if (seq_index >= (*bank)[type][index].data.size()) return 0;
+    return (*bank)[type][index].data[seq_index];
 }
 
 sequences_t* FTM_FILE::get_inst_sequ(instrument_t *inst, int type, int index) {
-    SequenceBank &bank = (inst != NULL && inst->type == INST_VRC6) ? vrc6_sequences : sequences;
-    if (type >= bank.size()) return NULL;
-    if (index >= bank[type].size()) return NULL;
-    return &bank[type][index];
+    SequenceBank *bank = &sequences;
+    if (inst != NULL && inst->type == INST_VRC6) {
+        bank = &vrc6_sequences;
+    } else if (inst != NULL && inst->type == INST_N163) {
+        bank = &n163_sequences;
+    }
+    if (type >= bank->size()) return NULL;
+    if (index >= (*bank)[type].size()) return NULL;
+    return &(*bank)[type][index];
 }
 
 uint8_t FTM_FILE::get_sequ_len(int type, int index) {
@@ -1562,12 +1863,17 @@ void FTM_FILE::resize_sequ_len(int type, int index, int n) {
 }
 
 void FTM_FILE::resize_inst_sequ_len(instrument_t *inst, int type, int index, int n) {
-    SequenceBank &bank = (inst != NULL && inst->type == INST_VRC6) ? vrc6_sequences : sequences;
-    if (type >= bank.size()) return;
-    if (index >= bank[type].size()) return;
-    bank[type][index].data.resize(n);
-    bank[type][index].length = bank[type][index].data.size();
-    bank[type][index].type = type;
+    SequenceBank *bank = &sequences;
+    if (inst != NULL && inst->type == INST_VRC6) {
+        bank = &vrc6_sequences;
+    } else if (inst != NULL && inst->type == INST_N163) {
+        bank = &n163_sequences;
+    }
+    if (type >= bank->size()) return;
+    if (index >= (*bank)[type].size()) return;
+    (*bank)[type][index].data.resize(n);
+    (*bank)[type][index].length = (*bank)[type][index].data.size();
+    (*bank)[type][index].type = type;
 }
 
 void FTM_FILE::resize_sequ(int type, int size) {
@@ -1577,10 +1883,15 @@ void FTM_FILE::resize_sequ(int type, int size) {
 }
 
 void FTM_FILE::resize_inst_sequ(instrument_t *inst, int type, int size) {
-    SequenceBank &bank = (inst != NULL && inst->type == INST_VRC6) ? vrc6_sequences : sequences;
-    if (type >= bank.size()) return;
-    bank[type].resize(size);
-    bank[type][size - 1].type = type;
+    SequenceBank *bank = &sequences;
+    if (inst != NULL && inst->type == INST_VRC6) {
+        bank = &vrc6_sequences;
+    } else if (inst != NULL && inst->type == INST_N163) {
+        bank = &n163_sequences;
+    }
+    if (type >= bank->size()) return;
+    (*bank)[type].resize(size);
+    (*bank)[type][size - 1].type = type;
 }
 
 void FTM_FILE::set_sequ_loop(int type, int index, uint32_t n) {

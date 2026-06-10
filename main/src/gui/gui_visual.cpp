@@ -58,6 +58,13 @@ static const char *visual_channel_label(uint8_t channel, char *buf, size_t len) 
         buf[3] = '\0';
         return buf;
     }
+    if (ftm.is_n163_channel(channel)) {
+        uint8_t index = channel - ftm.n163_channel_index() + 1;
+        buf[0] = 'N';
+        buf[1] = (char)('0' + index);
+        buf[2] = '\0';
+        return buf;
+    }
     uint8_t index = channel > 99 ? 99 : channel;
     buf[0] = 'C';
     buf[1] = 'H';
@@ -108,6 +115,8 @@ void osc_menu() {
                 else display.printf("V6%d", c - first + 1);
             } else if (ftm.is_mmc5_channel(c)) {
                 display.printf("PU%d", c - ftm.mmc5_channel_index() + 3);
+            } else if (ftm.is_n163_channel(c)) {
+                display.printf("N%d", c - ftm.n163_channel_index() + 1);
             } else {
                 display.printf("CH%d", c);
             }

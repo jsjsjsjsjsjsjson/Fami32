@@ -24,19 +24,22 @@ extern "C" {
 #define FAMI32_VRC7_FIRST_CHANNEL 5
 #define FAMI32_MMC5_CHANNELS 2
 #define FAMI32_FDS_CHANNELS 1
-#define FAMI32_MAX_CHANNELS 17
+#define FAMI32_N163_MAX_CHANNELS 8
+#define FAMI32_MAX_CHANNELS 25
 
 #define FTM_EXT_NONE 0x00
 #define FTM_EXT_VRC6 0x01
 #define FTM_EXT_VRC7 0x02
 #define FTM_EXT_FDS 0x04
 #define FTM_EXT_MMC5 0x08
+#define FTM_EXT_N163 0x10
 
 #define INST_NONE 0
 #define INST_2A03 1
 #define INST_VRC6 2
 #define INST_VRC7 3
 #define INST_FDS 4
+#define INST_N163 5
 
 typedef struct __attribute__((packed)) {
     char id[18] = {'F','a','m','i','T','r','a','c','k','e','r',' ','M','o','d','u','l','e'};
@@ -54,6 +57,7 @@ typedef struct __attribute__((packed)) {
     uint32_t v_style = 1;
     uint32_t hl1 = 4;
     uint32_t hl2 = 16;
+    uint32_t n163_channels = 1;
     uint32_t s_split = 0x20; // ?
 } PARAMS_BLOCK;
 
@@ -144,6 +148,8 @@ typedef struct __attribute__((packed)) {
 #define FAMI32_FDS_MOD_SIZE 32
 #define FAMI32_FDS_SEQUENCE_TYPES 3
 #define FAMI32_FDS_SEQUENCE_MAX 255
+#define FAMI32_N163_WAVE_SIZE 32
+#define FAMI32_N163_WAVE_MAX 16
 
 typedef struct __attribute__((packed)) {
     uint8_t length = 0;
@@ -172,6 +178,13 @@ typedef struct __attribute__((packed)) {
     uint32_t fds_mod_depth = 0;
     uint32_t fds_mod_delay = 0;
     fds_sequence_t fds_seq[FAMI32_FDS_SEQUENCE_TYPES];
+    uint32_t n163_wave_size = FAMI32_N163_WAVE_SIZE;
+    uint32_t n163_wave_pos = 0;
+    uint32_t n163_wave_count = 1;
+    uint8_t n163_wave[FAMI32_N163_WAVE_MAX][FAMI32_N163_WAVE_SIZE] = {
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
+        15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}
+    };
     uint32_t name_len = 14;
     char name[64] = "New instrument";
 } instrument_t;
@@ -246,6 +259,7 @@ class FTM_FILE {
 private:
     std::vector<std::vector<sequences_t>> sequences;
     std::vector<std::vector<sequences_t>> vrc6_sequences;
+    std::vector<std::vector<sequences_t>> n163_sequences;
     std::vector<instrument_t> instrument;
 
     std::vector<std::vector<uint8_t>> frames;
@@ -264,6 +278,7 @@ public:
     INSTRUMENT_BLOCK inst_block;
     SEQUENCES_BLOCK seq_block;
     SEQUENCES_BLOCK vrc6_seq_block;
+    SEQUENCES_BLOCK n163_seq_block;
     FRAME_BLOCK fr_block;
     PATTERN_BLOCK pt_block;
     DPCM_SAMPLE_BLOCK dpcm_block;
@@ -306,6 +321,8 @@ public:
     void read_vrc6_sequences_block();
     void read_vrc6_sequences_data();
     void write_vrc6_sequences();
+    void read_n163_sequences_data();
+    void write_n163_sequences();
 
     void read_frame_block();
     void read_frame_data();
@@ -346,6 +363,12 @@ public:
     void set_mmc5_enabled(bool enabled);
     bool is_mmc5_channel(int c) const;
     int mmc5_channel_index() const;
+    bool n163_enabled() const;
+    void set_n163_enabled(bool enabled);
+    bool is_n163_channel(int c) const;
+    int n163_channel_index() const;
+    uint8_t n163_channel_count() const;
+    void set_n163_channel_count(uint8_t count);
     int read_ftm_all();
 
     int8_t get_sequ_data(int type, int index, int seq_index);

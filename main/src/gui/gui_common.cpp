@@ -26,7 +26,8 @@ std::vector<unpk_item_t> clipboard_data;  // will be used for copy/paste pattern
 const char ch_name[FAMI32_MAX_CHANNELS][10] = {
     "PULSE1", "PULSE2", "TRIANGLE", "NOISE", "DPCM",
     "VRC6-1", "VRC6-2", "VRC6-SAW", "VRC7-1", "VRC7-2", "VRC7-3",
-    "VRC7-4", "VRC7-5", "VRC7-6", "MMC5-1", "MMC5-2", "FDS"
+    "VRC7-4", "VRC7-5", "VRC7-6", "MMC5-1", "MMC5-2", "FDS",
+    "N163-1", "N163-2", "N163-3", "N163-4", "N163-5", "N163-6", "N163-7", "N163-8"
 };
 
 // Pause audio playback and clear audio buffer

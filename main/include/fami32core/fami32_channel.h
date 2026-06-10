@@ -52,15 +52,15 @@ private:
     WAVE_TYPE chl_mode;
 
     //FX Flag
-    uint8_t slide_up = 0;
-    uint8_t slide_down = 0;
+    uint16_t slide_up = 0;
+    uint16_t slide_down = 0;
 
     uint8_t vol_slide_up = 0;
     uint8_t vol_slide_down = 0;
 
     uint8_t vol_count = 0;
 
-    uint8_t auto_port = 0;
+    uint16_t auto_port = 0;
     float auto_port_source;
     float auto_port_target;
     bool auto_port_finish = true;
@@ -76,10 +76,10 @@ private:
     uint8_t tre_pos = 0;
 
     float portup_target;
-    uint8_t portup_speed = 0;
+    uint16_t portup_speed = 0;
 
     float portdown_target;
-    uint8_t portdown_speed = 0;
+    uint16_t portdown_speed = 0;
 
     int8_t period_offset = 0;
 
@@ -92,6 +92,8 @@ private:
     uint8_t arp_fx_n2;
 
     uint8_t arp_fx_pos = 0;
+    int16_t arp_relative_note = 0;
+    bool arp_fixed_active = false;
 
     uint8_t rel_vol;
 
@@ -112,6 +114,15 @@ private:
     uint32_t fds_mod_delay = 0;
     uint32_t fds_mod_counter = 0;
     bool fds_gate = false;
+
+    uint32_t n163_phase = 0;
+    uint8_t n163_wave[FAMI32_N163_WAVE_SIZE] = {
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,
+        15,14,13,12,11,10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0
+    };
+    uint8_t n163_wave_size = FAMI32_N163_WAVE_SIZE;
+    uint8_t n163_wave_index = 0;
+    bool n163_gate = false;
 
     HighPassFilter hpf;
 
@@ -197,6 +208,8 @@ public:
     void set_fds_mod_depth(uint8_t depth);
     void set_fds_mod_speed_hi(uint8_t value);
     void set_fds_mod_speed_lo(uint8_t value);
+    bool is_n163_mode() const;
+    bool get_n163_gate() const;
 
     void set_note(uint8_t note);
     void set_vol(int8_t vol);
@@ -220,6 +233,7 @@ private:
     bool next_noise_bit(bool short_mode, uint32_t phase_step);
     void sync_vrc7_instrument();
     void sync_fds_instrument();
+    void sync_n163_instrument();
     void fir_push(FirState &state, int32_t x);
     int32_t fir_apply(const FirState &state) const;
 };

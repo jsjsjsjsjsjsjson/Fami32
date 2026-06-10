@@ -150,6 +150,20 @@ void FAMI_PLAYER::setup_channel_modes() {
             channel[fds_c].set_chl_mode(FDS_WAVE);
         }
     }
+
+    if (ftm_data != NULL && ftm_data->n163_enabled()) {
+        int n163_c = ftm_data->n163_channel_index();
+        uint8_t n163_count = ftm_data->n163_channel_count();
+        if (n163_c >= 0) {
+            for (uint8_t i = 0; i < n163_count; ++i) {
+                uint8_t c = n163_c + i;
+                if (c < FAMI32_MAX_CHANNELS) {
+                    channel[c].set_mode(N163_WAVE);
+                    channel[c].set_chl_mode(N163_WAVE);
+                }
+            }
+        }
+    }
 }
 
 void FAMI_PLAYER::start_play() {
@@ -290,6 +304,18 @@ void FAMI_PLAYER::mix_all_channel() {
                 mixed += channel[fds_c].get_buf()[i];
             }
         }
+        if (ftm_data != NULL && ftm_data->n163_enabled()) {
+            int n163_c = ftm_data->n163_channel_index();
+            uint8_t n163_count = ftm_data->n163_channel_count();
+            if (n163_c >= 0) {
+                for (uint8_t n = 0; n < n163_count; ++n) {
+                    uint8_t c = n163_c + n;
+                    if (c < count && i < channel[c].get_buf_size() && !mute[c]) {
+                        mixed += channel[c].get_buf()[i];
+                    }
+                }
+            }
+        }
         if (ftm_data != NULL && ftm_data->mmc5_enabled()) {
             int mmc5_c = ftm_data->mmc5_channel_index();
             if (mmc5_c >= 0) {
@@ -418,6 +444,18 @@ void FAMI_PLAYER::render_tick_segment(size_t dst_offset, size_t sample_count, bo
             int fds_c = ftm_data->fds_channel_index();
             if (fds_c >= 0 && fds_c < (int)count && i < channel[fds_c].get_buf_size() && !mute[fds_c]) {
                 mixed += channel[fds_c].get_buf()[i];
+            }
+        }
+        if (ftm_data != NULL && ftm_data->n163_enabled()) {
+            int n163_c = ftm_data->n163_channel_index();
+            uint8_t n163_count = ftm_data->n163_channel_count();
+            if (n163_c >= 0) {
+                for (uint8_t n = 0; n < n163_count; ++n) {
+                    uint8_t c = n163_c + n;
+                    if (c < count && i < channel[c].get_buf_size() && !mute[c]) {
+                        mixed += channel[c].get_buf()[i];
+                    }
+                }
             }
         }
         if (ftm_data != NULL && ftm_data->mmc5_enabled()) {

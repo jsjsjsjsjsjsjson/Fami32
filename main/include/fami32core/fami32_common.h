@@ -26,6 +26,10 @@ extern USBMIDI MIDI;
 #define HPI_SEQU 3
 #define DTY_SEQU 4
 
+#define ARP_SETTING_ABSOLUTE 0
+#define ARP_SETTING_FIXED 1
+#define ARP_SETTING_RELATIVE 2
+
 typedef enum {
     SEQU_STOP,
     SEQU_PLAYING,

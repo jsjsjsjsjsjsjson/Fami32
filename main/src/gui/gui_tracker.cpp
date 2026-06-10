@@ -117,6 +117,8 @@ void tracker_menu() {
                 else display.printf("V6%d", c - first + 1);
             } else if (ftm.is_mmc5_channel(c)) {
                 display.printf("PU%d", c - ftm.mmc5_channel_index() + 3);
+            } else if (ftm.is_n163_channel(c)) {
+                display.printf("N%d", c - ftm.n163_channel_index() + 1);
             } else {
                 display.printf("CH%d", c);
             }

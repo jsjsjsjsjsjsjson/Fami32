@@ -49,6 +49,17 @@ uint32_t current_sequence_release(instrument_t *instrument, FTM_FILE *ftm_data, 
     return seq != NULL ? seq->release : SEQ_FEAT_DISABLE;
 }
 
+uint32_t current_sequence_setting(instrument_t *instrument, FTM_FILE *ftm_data, int n) {
+    if (instrument == NULL) {
+        return 0;
+    }
+    if (instrument->type == INST_FDS) {
+        return is_fds_sequence_type(n) ? instrument->fds_seq[n].setting : 0;
+    }
+    sequences_t *seq = ftm_data->get_inst_sequ(instrument, n, instrument->seq_index[n].seq_index);
+    return seq != NULL ? seq->setting : 0;
+}
+
 int8_t current_sequence_data(instrument_t *instrument, FTM_FILE *ftm_data, int n, uint32_t index) {
     if (instrument == NULL) {
         return 0;
@@ -196,6 +207,13 @@ int8_t FAMI_INSTRUMENT::get_sequ_var(int n) {
         return 0;
     }
     return var[n];
+}
+
+uint32_t FAMI_INSTRUMENT::get_sequ_setting(int n) {
+    if (n < 0 || n >= 5) {
+        return 0;
+    }
+    return current_sequence_setting(instrument, ftm_data, n);
 }
 
 uint32_t FAMI_INSTRUMENT::get_pos(int n) {

@@ -26,6 +26,7 @@ public:
     void update_tick();
 
     int8_t get_sequ_var(int n);
+    uint32_t get_sequ_setting(int n);
     uint32_t get_pos(int n);
     note_stat_t get_status(int n);
     bool get_sequ_enable(int n);

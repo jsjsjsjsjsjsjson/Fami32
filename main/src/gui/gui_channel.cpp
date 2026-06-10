@@ -26,6 +26,11 @@ static const char *channel_display_name(uint8_t channel, char *buf, size_t len) 
         snprintf(buf, len, "MMC5-%u", (unsigned)(channel - first + 1));
         return buf;
     }
+    if (ftm.is_n163_channel(channel)) {
+        int first = ftm.n163_channel_index();
+        snprintf(buf, len, "N163-%u", (unsigned)(channel - first + 1));
+        return buf;
+    }
     return ch_name[channel];
 }
 
@@ -47,17 +52,19 @@ void channel_sel_page() {
 // Channel settings menu: select channel, toggle VRC7, or adjust effect columns.
 void channel_setting_page() {
     drawChessboard(0, 0, 128, 64);
-    const char *options[6] = {
+    const char *options[8] = {
         "SELECT CHAN",
         ftm.vrc6_enabled() ? "VRC6 CHIP:ON" : "VRC6 CHIP:OFF",
         ftm.vrc7_enabled() ? "VRC7 CHIP:ON" : "VRC7 CHIP:OFF",
         ftm.mmc5_enabled() ? "MMC5 CHIP:ON" : "MMC5 CHIP:OFF",
         ftm.fds_enabled() ? "FDS CHIP:ON" : "FDS CHIP:OFF",
+        ftm.n163_enabled() ? "N163 CHIP:ON" : "N163 CHIP:OFF",
+        "N163 CHANS",
         "EXT EFX NUM"
     };
     char title[16];
     snprintf(title, sizeof(title), "CHANNEL%d", channel_sel_pos);
-    int ret = menu(title, options, 6, nullptr, 72, 53);
+    int ret = menu(title, options, 8, nullptr, 72, 53);
     int tmp = ftm.he_block.ch_fx[channel_sel_pos];
     switch (ret) {
         case 0:
@@ -84,6 +91,19 @@ void channel_setting_page() {
             set_channel_sel_pos(channel_sel_pos);
             break;
         case 5:
+            ftm.set_n163_enabled(!ftm.n163_enabled());
+            player.reload();
+            set_channel_sel_pos(channel_sel_pos);
+            break;
+        case 6: {
+            int chans = ftm.n163_channel_count();
+            num_set_menu_int("N163 CHANS", 1, FAMI32_N163_MAX_CHANNELS, 1, &chans, 0, 0, 72, 34);
+            ftm.set_n163_channel_count(chans);
+            player.reload();
+            set_channel_sel_pos(channel_sel_pos);
+            break;
+        }
+        case 7:
             drawChessboard(0, 0, 128, 64);
             num_set_menu_int("EXT EFX NUM", 0, 3, 1, &tmp, 0, 0, 64, 32);
             ftm.he_block.ch_fx[channel_sel_pos] = tmp;
