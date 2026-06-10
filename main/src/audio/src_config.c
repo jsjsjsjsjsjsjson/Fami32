@@ -1,6 +1,6 @@
 #include "src_config.h"
 
-int SAMP_RATE = 96000;
+int SAMP_RATE = 72000;
 int ENG_SPEED = 60;
 int LPF_CUTOFF = 18000;
 int HPF_CUTOFF = 32;
