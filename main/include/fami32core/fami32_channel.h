@@ -12,10 +12,7 @@ private:
     FTM_FILE *ftm_data;
     FAMI_INSTRUMENT inst_proc;
 
-    int i_pos;
-    float f_pos;
-
-    float pos_count;
+    uint32_t phase_acc = 0;
 
     float freq = 0;
     float period = 0;
@@ -27,12 +24,12 @@ private:
     uint8_t noise_rate = 0;
     uint8_t noise_rate_rel = 0;
     uint16_t noise_shift_reg = 1;
-    float noise_timer = 0.0f;
+    uint32_t noise_phase = 0;
     float noise_period = 4.0f;
     uint8_t triangle_hold_level = 8;
 
     int sample_pos = 0;
-    float sample_fpos = 0.0f;
+    uint32_t sample_phase = 0;
     uint8_t sample_pitch = 0;
     int sample_num = 0;
     bool sample_status = false;
@@ -107,7 +104,7 @@ private:
     uint16_t vrc7_fnum = 0;
     uint8_t vrc7_block = 0;
 
-    float fds_pos = 0.0f;
+    uint32_t fds_phase = 0;
     uint8_t fds_wave[FAMI32_FDS_WAVE_SIZE] = {0};
     uint8_t fds_mod[FAMI32_FDS_MOD_SIZE] = {0};
     uint32_t fds_mod_speed = 0;
@@ -220,7 +217,7 @@ private:
     void reset_fir_state();
     void reset_noise_state();
     void update_noise_period();
-    bool next_noise_bit(bool short_mode, float step);
+    bool next_noise_bit(bool short_mode, uint32_t phase_step);
     void sync_vrc7_instrument();
     void sync_fds_instrument();
     void fir_push(FirState &state, int32_t x);
