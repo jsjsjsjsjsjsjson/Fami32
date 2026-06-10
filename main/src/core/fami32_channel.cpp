@@ -68,6 +68,11 @@ const uint16_t NOISE_PERIODS[16] = {
 };
 constexpr int NOISE_OVERSAMPLE_MAX = 64;
 constexpr float PHASE_SCALE = 4294967296.0f;
+constexpr int FIR_HALF_TAPS = FIR_TAPS / 2;
+constexpr int16_t FIR_COEFS[FIR_HALF_TAPS + 1] = {
+    14, 242, 1021, 1542
+};
+static_assert((FIR_TAPS & 1) == 1, "FIR_TAPS must be odd");
 
 uint32_t phase_step_from_cycles(float cycles_per_sample) {
     if (cycles_per_sample <= 0.0f) {
@@ -238,11 +243,26 @@ void FAMI_CHANNEL::fir_push(FirState &state, int32_t x) {
 }
 
 int32_t FAMI_CHANNEL::fir_apply(const FirState &state) const {
-    int32_t acc = 0;
-    for (int i = 0; i < FIR_TAPS; i++) {
-        acc += state.hist[i];
+    uint8_t center = state.wr + FIR_HALF_TAPS;
+    if (center >= FIR_TAPS) center -= FIR_TAPS;
+
+    int32_t acc = state.hist[center] * FIR_COEFS[FIR_HALF_TAPS];
+
+    uint8_t left = state.wr;
+    uint8_t right = (state.wr == 0) ? (FIR_TAPS - 1) : (state.wr - 1);
+
+    for (int i = 0; i < FIR_HALF_TAPS; i++) {
+        acc += (state.hist[left] + state.hist[right]) * FIR_COEFS[i];
+        left++;
+        if (left >= FIR_TAPS) left = 0;
+        right = (right == 0) ? (FIR_TAPS - 1) : (right - 1);
     }
-    return acc >> 3;
+
+    constexpr int32_t half = 1 << (FIR_COEF_SHIFT - 1);
+    if (acc >= 0) {
+        return (acc + half) >> FIR_COEF_SHIFT;
+    }
+    return -((-acc + half) >> FIR_COEF_SHIFT);
 }
 
 void FAMI_CHANNEL::update_noise_period() {

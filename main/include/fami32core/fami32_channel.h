@@ -4,7 +4,7 @@
 #include "fami32_common.h"
 #include "fami32_instrument.h"
 
-#define FIR_TAPS 8
+#define FIR_TAPS 7
 #define FIR_COEF_SHIFT 12
 
 class FAMI_CHANNEL {
