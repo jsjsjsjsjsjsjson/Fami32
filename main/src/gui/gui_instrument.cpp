@@ -63,6 +63,48 @@ static void arp_setting_menu(uint32_t *setting) {
     }
 }
 
+static int clamp_i(int value, int min_value, int max_value) {
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
+}
+
+static void draw_editor_header(const char *chip, const char *name) {
+    display.fillRect(0, 0, 128, 9, 1);
+    display.setTextColor(0);
+    display.setCursor(1, 1);
+    display.setFont(&rismol57);
+    display.printf("%s %.12s", chip, name);
+    display.setFont(&rismol35);
+    display.setTextColor(1);
+}
+
+static void draw_tab_strip(const char *tabs[], int count, int active) {
+    if (count <= 0) return;
+    int tab_w = 128 / count;
+    display.drawFastHLine(0, 9, 128, 1);
+    for (int i = 0; i < count; ++i) {
+        int x = i * tab_w;
+        int w = (i == count - 1) ? (128 - x) : tab_w;
+        if (i == active) {
+            display.fillRect(x, 10, w, 8, 1);
+            display.setTextColor(0);
+        } else {
+            display.setTextColor(1);
+        }
+        display.setCursor(x + 2, 12);
+        display.print(tabs[i]);
+    }
+    display.setTextColor(1);
+    display.drawFastHLine(0, 18, 128, 1);
+}
+
+static void edit_int_value(const char *title, int min_value, int max_value, int *value) {
+    if (value == NULL) return;
+    num_set_menu_int(title, min_value, max_value, 1, value, 0, 0, 84, 34);
+    *value = clamp_i(*value, min_value, max_value);
+}
+
 static void instrument_type_page() {
     const char *type_str[5] = {"2A03", "VRC6", "VRC7", "FDS", "N163"};
     int init = 0;
@@ -355,43 +397,59 @@ void quick_gen_sequ(instrument_t *inst, sequences_t *sequ, uint32_t type, uint32
 
 void vrc7_instrument_editor(instrument_t *inst) {
     if (inst == NULL) return;
-    int sel = 0;
+    int section = 0;
+    int field = 0;
+    static const char *tabs[3] = {"PATCH", "MOD", "CAR"};
+    static const char *menu_str[4] = {"PATCH", "MODULATOR", "CARRIER", "TYPE"};
+    static const uint8_t mod_regs[4] = {0, 2, 4, 6};
+    static const uint8_t car_regs[4] = {1, 3, 5, 7};
+    static const char *reg_labels[8] = {
+        "R0 MUL", "R1 MUL", "R2 LVL", "R3 KSL",
+        "R4 AD",  "R5 AD",  "R6 SR",  "R7 SR"
+    };
 
     for (;;) {
         display.clearDisplay();
-        display.fillRect(0, 0, 128, 9, 1);
-        display.setTextColor(0);
-        display.setCursor(1, 1);
-        display.setFont(&rismol57);
-        display.printf("VRC7 %.12s", inst->name);
+        draw_editor_header("VRC7", inst->name);
+        draw_tab_strip(tabs, 3, section);
 
-        display.setFont(&rismol35);
-        display.setTextColor(1);
-        display.drawFastHLine(0, 10, 128, 1);
+        if (section == 0) {
+            display.fillRect(0, 22, 70, 10, 1);
+            display.setTextColor(0);
+            display.setCursor(3, 24);
+            display.printf("PATCH:%02lX", (unsigned long)(inst->vrc7_patch & 0x0F));
+            display.setTextColor(1);
+            display.setCursor(76, 23);
+            display.print((inst->vrc7_patch & 0x0F) == 0 ? "CUSTOM" : "PRESET");
 
-        display.setCursor(2, 14);
-        if (sel == 0) display.fillRect(0, 13, 64, 7, 1), display.setTextColor(0);
-        display.printf("PATCH:%02lX", inst->vrc7_patch & 0x0F);
-        display.setTextColor(1);
-
-        for (uint8_t r = 0; r < 8; ++r) {
-            uint8_t row = r / 2;
-            uint8_t col = r & 1;
-            uint8_t x = col ? 64 : 2;
-            uint8_t y = 24 + row * 8;
-            if (sel == r + 1) {
-                display.fillRect(x - 2, y - 1, 60, 7, 1);
-                display.setTextColor(0);
-            } else {
-                display.setTextColor(1);
+            display.setCursor(2, 38);
+            display.print("CUSTOM REGISTERS");
+            for (uint8_t r = 0; r < 8; ++r) {
+                int x = 2 + (r * 15);
+                display.setCursor(x, 48);
+                display.printf("%02X", inst->vrc7_regs[r]);
             }
-            display.setCursor(x, y);
-            display.printf("R%d:%02X", r, inst->vrc7_regs[r]);
+        } else {
+            const uint8_t *regs = (section == 1) ? mod_regs : car_regs;
+            for (uint8_t i = 0; i < 4; ++i) {
+                uint8_t r = regs[i];
+                int y = 22 + (i * 8);
+                if (field == i) {
+                    display.fillRect(0, y - 1, 128, 8, 1);
+                    display.setTextColor(0);
+                } else {
+                    display.setTextColor(1);
+                }
+                display.setCursor(2, y);
+                display.printf("%s:%02X  HI:%X LO:%X", reg_labels[r], inst->vrc7_regs[r],
+                               (inst->vrc7_regs[r] >> 4) & 0x0F, inst->vrc7_regs[r] & 0x0F);
+            }
+            display.setTextColor(1);
         }
 
         display.setTextColor(1);
         display.setCursor(0, 58);
-        display.print("OK EDIT MENU TYPE");
+        display.print(section == 0 ? "OK EDIT MENU PAGE" : "OK EDIT L/R SEL");
         display.display();
 
         if (keypad.available()) {
@@ -400,45 +458,79 @@ void vrc7_instrument_editor(instrument_t *inst) {
                 if (e.bit.KEY == KEY_BACK) {
                     return;
                 } else if (e.bit.KEY == KEY_OK) {
-                    if (sel == 0) {
+                    if (section == 0) {
                         int value = inst->vrc7_patch & 0x0F;
-                        num_set_menu_int("VRC7 PATCH", 0, 15, 1, &value, 0, 0, 72, 34);
+                        edit_int_value("VRC7 PATCH", 0, 15, &value);
                         inst->vrc7_patch = value & 0x0F;
                     } else {
-                        int value = inst->vrc7_regs[sel - 1];
+                        uint8_t reg = (section == 1) ? mod_regs[field] : car_regs[field];
+                        int value = inst->vrc7_regs[reg];
                         char title[24];
-                        snprintf(title, sizeof(title), "VRC7 R%d", sel - 1);
-                        num_set_menu_int(title, 0, 255, 1, &value, 0, 0, 72, 34);
-                        inst->vrc7_regs[sel - 1] = value & 0xFF;
+                        snprintf(title, sizeof(title), "VRC7 R%d", reg);
+                        edit_int_value(title, 0, 255, &value);
+                        inst->vrc7_regs[reg] = value & 0xFF;
                     }
                     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
                 } else if (e.bit.KEY == KEY_MENU) {
-                    instrument_type_page();
-                    if (inst->type != INST_VRC7) return;
+                    int ret = menu("VRC7 EDIT", menu_str, 4, NULL, 72, 45, 0, 0, section);
+                    if (ret >= 0 && ret < 3) {
+                        section = ret;
+                        field = 0;
+                    } else if (ret == 3) {
+                        instrument_type_page();
+                        if (inst->type != INST_VRC7) return;
+                    }
+                } else if (e.bit.KEY == KEY_NAVI) {
+                    menu_navi();
+                    return;
                 } else if (e.bit.KEY == KEY_L) {
-                    sel--;
-                    if (sel < 0) sel = 8;
+                    if (section > 0) {
+                        field--;
+                        if (field < 0) field = 3;
+                    } else {
+                        section = 2;
+                        field = 0;
+                    }
                 } else if (e.bit.KEY == KEY_R) {
-                    sel++;
-                    if (sel > 8) sel = 0;
+                    if (section > 0) {
+                        field++;
+                        if (field > 3) field = 0;
+                    } else {
+                        section = 1;
+                        field = 0;
+                    }
                 } else if (e.bit.KEY == KEY_UP) {
-                    sel -= 2;
-                    if (sel < 0) sel += 9;
+                    if (section > 0) {
+                        uint8_t reg = (section == 1) ? mod_regs[field] : car_regs[field];
+                        inst->vrc7_regs[reg]++;
+                        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                    } else {
+                        inst->vrc7_patch = (inst->vrc7_patch + 1) & 0x0F;
+                        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                    }
                 } else if (e.bit.KEY == KEY_DOWN) {
-                    sel += 2;
-                    if (sel > 8) sel -= 9;
+                    if (section > 0) {
+                        uint8_t reg = (section == 1) ? mod_regs[field] : car_regs[field];
+                        inst->vrc7_regs[reg]--;
+                        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                    } else {
+                        inst->vrc7_patch = (inst->vrc7_patch - 1) & 0x0F;
+                        player.channel[channel_sel_pos].set_inst(inst_sel_pos);
+                    }
                 } else if (e.bit.KEY == KEY_P) {
-                    if (sel == 0) {
+                    if (section == 0) {
                         inst->vrc7_patch = (inst->vrc7_patch + 1) & 0x0F;
                     } else {
-                        inst->vrc7_regs[sel - 1]++;
+                        uint8_t reg = (section == 1) ? mod_regs[field] : car_regs[field];
+                        inst->vrc7_regs[reg]++;
                     }
                     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
                 } else if (e.bit.KEY == KEY_S) {
-                    if (sel == 0) {
+                    if (section == 0) {
                         inst->vrc7_patch = (inst->vrc7_patch - 1) & 0x0F;
                     } else {
-                        inst->vrc7_regs[sel - 1]--;
+                        uint8_t reg = (section == 1) ? mod_regs[field] : car_regs[field];
+                        inst->vrc7_regs[reg]--;
                     }
                     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
                 }
@@ -602,11 +694,17 @@ static void fds_sequence_editor(instrument_t *inst) {
                             }
                         }
                     } else {
-                        restore_len[sequ_type] = sequ->length;
-                        sequ->length = 0;
-                        sequ_sel_index = 0;
-                        pageStart = 0;
-                        pageEnd = 32;
+                        int value = sequ->data[sequ_sel_index];
+                        if (sequ_type == VOL_SEQU) {
+                            edit_int_value("FDS VOLUME", 0, 31, &value);
+                        } else if (sequ_type == ARP_SEQU && sequ->setting == ARP_SETTING_FIXED) {
+                            edit_int_value("FDS ARP", 0, 95, &value);
+                        } else if (sequ_type == ARP_SEQU) {
+                            edit_int_value("FDS ARP", -128, 127, &value);
+                        } else {
+                            edit_int_value("FDS PITCH", -128, 127, &value);
+                        }
+                        sequ->data[sequ_sel_index] = value;
                     }
                 } else if (e.bit.KEY == KEY_BACK) {
                     return;
@@ -625,6 +723,9 @@ static void fds_sequence_editor(instrument_t *inst) {
                     case 0: {
                         int len = edit_seq.length;
                         num_set_menu_int("SEQU LENGTH", 0, FAMI32_FDS_SEQUENCE_MAX, 1, &len, 0, 0, 100, 34);
+                        if (len == 0 && edit_seq.length > 0) {
+                            restore_len[sequ_type] = edit_seq.length;
+                        }
                         if (len > edit_seq.length) {
                             for (int i = edit_seq.length; i < len; ++i) {
                                 edit_seq.data[i] = (sequ_type == VOL_SEQU) ? 31 : 0;
@@ -776,54 +877,81 @@ void fds_instrument_editor(instrument_t *inst) {
     int wave_index = 0;
     int mod_index = 0;
     int param_index = 0;
-    static const char *menu_str[4] = {"WAVE TABLE", "MOD TABLE", "PARAMS", "SEQUENCES"};
+    static const char *tabs[4] = {"WAVE", "MOD", "PARM", "SEQ"};
+    static const char *menu_str[5] = {"WAVE TABLE", "MOD TABLE", "PARAMS", "SEQUENCES", "TYPE"};
+    static const char *seq_name[FAMI32_FDS_SEQUENCE_TYPES] = {"VOL", "ARP", "PIT"};
 
     for (;;) {
         display.clearDisplay();
-        display.fillRect(0, 0, 128, 9, 1);
-        display.setTextColor(0);
-        display.setCursor(1, 1);
-        display.setFont(&rismol57);
-        display.printf("FDS %.13s", inst->name);
-        display.setFont(&rismol35);
-        display.setTextColor(1);
-        display.drawFastHLine(0, 10, 128, 1);
+        draw_editor_header("FDS", inst->name);
+        draw_tab_strip(tabs, 4, section);
 
-        for (int i = 0; i < FAMI32_FDS_WAVE_SIZE; ++i) {
-            int h = (inst->fds_wave[i] & 0x3F) / 2;
-            display.drawFastVLine(i * 2, 43 - h, h ? h : 1, 1);
-        }
         if (section == 0) {
-            invertRect(wave_index * 2, 44, 2, 5);
-        }
-
-        for (int i = 0; i < FAMI32_FDS_MOD_SIZE; ++i) {
-            int x = i * 2;
-            int y = 55 - (inst->fds_mod[i] & 7);
-            display.drawFastVLine(x, y, 1 + (inst->fds_mod[i] & 7), 1);
-        }
-        if (section == 1) {
-            invertRect(mod_index * 2, 56, 2, 5);
-        }
-
-        display.setCursor(0, 50);
-        display.printf("W%02d:%02d M%02d:%d", wave_index, inst->fds_wave[wave_index] & 0x3F, mod_index, inst->fds_mod[mod_index] & 7);
-        display.setCursor(64, 12);
-        display.printf("SPD:%04lX", inst->fds_mod_speed & 0x0FFF);
-        display.setCursor(64, 20);
-        display.printf("DEP:%02lX", inst->fds_mod_depth & 0x3F);
-        display.setCursor(64, 28);
-        display.printf("DLY:%02lX", inst->fds_mod_delay & 0xFF);
-
-        if (section == 2) {
-            invertRect(63, 11 + (param_index * 8), 64, 8);
-        } else if (section == 3) {
-            invertRect(74, 57, 54, 7);
+            display.drawRect(0, 20, 128, 28, 1);
+            for (int i = 0; i < FAMI32_FDS_WAVE_SIZE; ++i) {
+                int h = ((inst->fds_wave[i] & 0x3F) * 25) / 63;
+                int x = i * 2;
+                if (i == wave_index) {
+                    display.fillRect(x, 47 - h, 2, h ? h : 1, 1);
+                    display.drawFastHLine(x, 19, 2, 1);
+                } else {
+                    display.drawFastVLine(x, 47 - h, h ? h : 1, 1);
+                }
+            }
+            display.setCursor(0, 51);
+            display.printf("WAVE %02d/%02d VAL:%02d", wave_index, FAMI32_FDS_WAVE_SIZE - 1,
+                           inst->fds_wave[wave_index] & 0x3F);
+        } else if (section == 1) {
+            display.drawRect(0, 22, 128, 24, 1);
+            for (int i = 0; i < FAMI32_FDS_MOD_SIZE; ++i) {
+                int x = i * 4;
+                int h = ((inst->fds_mod[i] & 7) * 20) / 7;
+                if (i == mod_index) {
+                    display.fillRect(x, 45 - h, 3, h ? h : 1, 1);
+                    display.drawFastHLine(x, 20, 3, 1);
+                } else {
+                    display.drawRect(x, 45 - h, 3, h ? h : 1, 1);
+                }
+            }
+            display.setCursor(0, 51);
+            display.printf("MOD %02d/%02d VAL:%d", mod_index, FAMI32_FDS_MOD_SIZE - 1,
+                           inst->fds_mod[mod_index] & 7);
+        } else if (section == 2) {
+            const char *labels[3] = {"SPEED", "DEPTH", "DELAY"};
+            uint32_t values[3] = {inst->fds_mod_speed & 0x0FFF, inst->fds_mod_depth & 0x3F, inst->fds_mod_delay & 0xFF};
+            for (int i = 0; i < 3; ++i) {
+                int y = 23 + i * 10;
+                if (i == param_index) {
+                    display.fillRect(0, y - 1, 128, 9, 1);
+                    display.setTextColor(0);
+                } else {
+                    display.setTextColor(1);
+                }
+                display.setCursor(2, y);
+                display.printf("%s:%04lX", labels[i], (unsigned long)values[i]);
+            }
+            display.setTextColor(1);
+        } else {
+            display.setCursor(2, 22);
+            display.print("FDS LOCAL SEQUENCES");
+            for (int i = 0; i < FAMI32_FDS_SEQUENCE_TYPES; ++i) {
+                fds_sequence_t &seq = inst->fds_seq[i];
+                int y = 33 + i * 8;
+                display.setCursor(4, y);
+                if (seq.length > 0) {
+                    display.printf("%s LEN:%03d L:%s R:%s", seq_name[i], seq.length,
+                                   seq.loop == SEQ_FEAT_DISABLE ? "--" : "ON",
+                                   seq.release == SEQ_FEAT_DISABLE ? "--" : "ON");
+                } else {
+                    display.printf("%s OFF", seq_name[i]);
+                }
+            }
+            invertRect(88, 57, 40, 7);
         }
 
         display.setCursor(0, 58);
         if (section == 0 || section == 1) {
-            display.print("L/R X UP/DN Y");
+            display.print("OK EDIT L/R X +/- Y");
         } else if (section == 2) {
             display.print("OK EDIT L/R SEL");
         } else {
@@ -837,20 +965,27 @@ void fds_instrument_editor(instrument_t *inst) {
                 if (e.bit.KEY == KEY_BACK) {
                     return;
                 } else if (e.bit.KEY == KEY_OK) {
-                    if (section == 2) {
+                    if (section == 0) {
+                        int value = inst->fds_wave[wave_index] & 0x3F;
+                        edit_int_value("FDS WAVE", 0, 63, &value);
+                        inst->fds_wave[wave_index] = value & 0x3F;
+                    } else if (section == 1) {
+                        int value = inst->fds_mod[mod_index] & 7;
+                        edit_int_value("FDS MOD", 0, 7, &value);
+                        inst->fds_mod[mod_index] = value & 7;
+                    } else if (section == 2) {
                         fds_edit_param(inst, param_index);
                     } else if (section == 3) {
                         fds_sequence_editor(inst);
                     }
                     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
                 } else if (e.bit.KEY == KEY_MENU) {
-                    int ret = menu("FDS EDIT", menu_str, 4, NULL, 72, 45, 0, 0, section);
-                    if (ret != -1) {
+                    int ret = menu("FDS EDIT", menu_str, 5, NULL, 72, 53, 0, 0, section);
+                    if (ret >= 0 && ret < 4) {
                         section = ret;
-                        if (section == 3) {
-                            fds_sequence_editor(inst);
-                            player.channel[channel_sel_pos].set_inst(inst_sel_pos);
-                        }
+                    } else if (ret == 4) {
+                        instrument_type_page();
+                        if (inst->type != INST_FDS) return;
                     }
                 } else if (e.bit.KEY == KEY_L) {
                     if (section == 1) {
@@ -859,9 +994,11 @@ void fds_instrument_editor(instrument_t *inst) {
                     } else if (section == 2) {
                         param_index--;
                         if (param_index < 0) param_index = 2;
-                    } else {
+                    } else if (section == 0) {
                         wave_index--;
                         if (wave_index < 0) wave_index = FAMI32_FDS_WAVE_SIZE - 1;
+                    } else {
+                        section = 2;
                     }
                 } else if (e.bit.KEY == KEY_R) {
                     if (section == 1) {
@@ -870,9 +1007,11 @@ void fds_instrument_editor(instrument_t *inst) {
                     } else if (section == 2) {
                         param_index++;
                         if (param_index > 2) param_index = 0;
-                    } else {
+                    } else if (section == 0) {
                         wave_index++;
                         if (wave_index >= FAMI32_FDS_WAVE_SIZE) wave_index = 0;
+                    } else {
+                        section = 0;
                     }
                 } else if (e.bit.KEY == KEY_UP || e.bit.KEY == KEY_P) {
                     if (section == 0) {
@@ -896,9 +1035,11 @@ void fds_instrument_editor(instrument_t *inst) {
                     menu_navi();
                     return;
                 } else if (e.bit.KEY == KEY_OCTU) {
-                    g_octv++;
+                    section++;
+                    if (section > 3) section = 0;
                 } else if (e.bit.KEY == KEY_OCTD) {
-                    g_octv--;
+                    section--;
+                    if (section < 0) section = 3;
                 }
             }
         }
@@ -957,7 +1098,8 @@ static void n163_instrument_editor(instrument_t *inst) {
     int wave = 0;
     int sample = 0;
     int param = 0;
-    static const char *menu_str[3] = {"WAVE TABLE", "PARAMS", "SEQUENCES"};
+    static const char *tabs[3] = {"WAVE", "PARM", "SEQ"};
+    static const char *menu_str[4] = {"WAVE TABLE", "PARAMS", "SEQUENCES", "TYPE"};
 
     for (;;) {
         if (inst->n163_wave_size < 1 || inst->n163_wave_size > FAMI32_N163_WAVE_SIZE) inst->n163_wave_size = FAMI32_N163_WAVE_SIZE;
@@ -966,45 +1108,60 @@ static void n163_instrument_editor(instrument_t *inst) {
         if (sample >= (int)inst->n163_wave_size) sample = inst->n163_wave_size - 1;
 
         display.clearDisplay();
-        display.fillRect(0, 0, 128, 9, 1);
-        display.setTextColor(0);
-        display.setCursor(1, 1);
-        display.setFont(&rismol57);
-        display.printf("N163 %.12s", inst->name);
-        display.setFont(&rismol35);
-        display.setTextColor(1);
-        display.drawFastHLine(0, 10, 128, 1);
+        draw_editor_header("N163", inst->name);
+        draw_tab_strip(tabs, 3, section);
 
-        int draw_w = 128 / inst->n163_wave_size;
-        if (draw_w < 1) draw_w = 1;
-        for (int i = 0; i < (int)inst->n163_wave_size; ++i) {
-            int h = (inst->n163_wave[wave][i] & 0x0F) * 2;
-            int x = i * draw_w;
-            if (i == sample && section == 0) {
-                display.fillRect(x, 43 - h, draw_w, h ? h : 1, 1);
-                display.drawFastHLine(x, 12, draw_w, 1);
-            } else {
-                display.drawRect(x, 43 - h, draw_w, h ? h : 1, 1);
+        if (section == 0) {
+            display.drawRect(0, 21, 128, 27, 1);
+            int draw_w = 128 / inst->n163_wave_size;
+            if (draw_w < 1) draw_w = 1;
+            for (int i = 0; i < (int)inst->n163_wave_size; ++i) {
+                int h = ((inst->n163_wave[wave][i] & 0x0F) * 24) / 15;
+                int x = i * draw_w;
+                if (i == sample) {
+                    display.fillRect(x, 47 - h, draw_w, h ? h : 1, 1);
+                    display.drawFastHLine(x, 19, draw_w, 1);
+                } else {
+                    display.drawRect(x, 47 - h, draw_w, h ? h : 1, 1);
+                }
             }
-        }
-
-        display.setCursor(0, 47);
-        display.printf("W%02d/%02ld S%02d:%02d", wave, inst->n163_wave_count, sample, inst->n163_wave[wave][sample] & 0x0F);
-        display.setCursor(70, 14);
-        display.printf("SIZE:%02ld", inst->n163_wave_size);
-        display.setCursor(70, 22);
-        display.printf("CNT:%02ld", inst->n163_wave_count);
-        display.setCursor(70, 30);
-        display.printf("POS:%03ld", inst->n163_wave_pos);
-
-        if (section == 1) {
-            invertRect(68, 13 + (param * 8), 60, 8);
-        } else if (section == 2) {
-            invertRect(74, 57, 54, 7);
+            display.setCursor(0, 51);
+            display.printf("W%02d/%02lu S%02d:%02d", wave, (unsigned long)inst->n163_wave_count,
+                           sample, inst->n163_wave[wave][sample] & 0x0F);
+            display.setCursor(72, 51);
+            display.printf("SZ:%02lu", (unsigned long)inst->n163_wave_size);
+        } else if (section == 1) {
+            const char *labels[3] = {"SIZE", "COUNT", "POS"};
+            uint32_t values[3] = {inst->n163_wave_size, inst->n163_wave_count, inst->n163_wave_pos};
+            for (int i = 0; i < 3; ++i) {
+                int y = 23 + i * 10;
+                if (i == param) {
+                    display.fillRect(0, y - 1, 128, 9, 1);
+                    display.setTextColor(0);
+                } else {
+                    display.setTextColor(1);
+                }
+                display.setCursor(2, y);
+                display.printf("%s:%03lu", labels[i], (unsigned long)values[i]);
+            }
+            display.setTextColor(1);
+        } else {
+            display.setCursor(2, 22);
+            display.print("N163 SEQUENCES");
+            for (int i = 0; i < 5; ++i) {
+                int y = 34 + (i / 2) * 8;
+                int x = (i & 1) ? 64 : 4;
+                display.setCursor(x, y);
+                display.drawBitmap(x, y - 1, fami32_icon[i], 7, 7, inst->seq_index[i].enable);
+                display.setCursor(x + 10, y);
+                display.printf("#%02d %s", inst->seq_index[i].seq_index,
+                               inst->seq_index[i].enable ? "ON" : "OFF");
+            }
+            invertRect(88, 57, 40, 7);
         }
 
         display.setCursor(0, 58);
-        if (section == 0) display.print("L/R X UP/DN Y");
+        if (section == 0) display.print("OK EDIT L/R X OCT W");
         else if (section == 1) display.print("OK EDIT L/R SEL");
         else display.print("OK SEQUENCES");
         display.display();
@@ -1015,7 +1172,11 @@ static void n163_instrument_editor(instrument_t *inst) {
                 if (e.bit.KEY == KEY_BACK) {
                     return;
                 } else if (e.bit.KEY == KEY_OK) {
-                    if (section == 1) {
+                    if (section == 0) {
+                        int value = inst->n163_wave[wave][sample] & 0x0F;
+                        edit_int_value("N163 SAMPLE", 0, 15, &value);
+                        inst->n163_wave[wave][sample] = value & 0x0F;
+                    } else if (section == 1) {
                         n163_edit_param(inst, param);
                     } else if (section == 2) {
                         n163_sequence_editor_request = true;
@@ -1023,8 +1184,13 @@ static void n163_instrument_editor(instrument_t *inst) {
                     }
                     player.channel[channel_sel_pos].set_inst(inst_sel_pos);
                 } else if (e.bit.KEY == KEY_MENU) {
-                    int ret = menu("N163 EDIT", menu_str, 3, NULL, 72, 37, 0, 0, section);
-                    if (ret != -1) section = ret;
+                    int ret = menu("N163 EDIT", menu_str, 4, NULL, 72, 45, 0, 0, section);
+                    if (ret >= 0 && ret < 3) {
+                        section = ret;
+                    } else if (ret == 3) {
+                        instrument_type_page();
+                        if (inst->type != INST_N163) return;
+                    }
                 } else if (e.bit.KEY == KEY_NAVI) {
                     menu_navi();
                     return;
@@ -1062,11 +1228,17 @@ static void n163_instrument_editor(instrument_t *inst) {
                     if (section == 0) {
                         wave++;
                         if (wave >= (int)inst->n163_wave_count) wave = 0;
+                    } else {
+                        section++;
+                        if (section > 2) section = 0;
                     }
                 } else if (e.bit.KEY == KEY_OCTD) {
                     if (section == 0) {
                         wave--;
                         if (wave < 0) wave = inst->n163_wave_count - 1;
+                    } else {
+                        section--;
+                        if (section < 0) section = 2;
                     }
                 }
             }
